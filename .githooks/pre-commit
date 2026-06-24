@@ -1,0 +1,46 @@
+#!/bin/sh
+# DC-plugins deterministic pre-commit gate (Tier 1).
+#
+# Fast, deterministic checks only — no LLM, no GUI tests. Semantic code review
+# (/code-review) runs at push/PR/release boundaries, not here.
+#
+# Enable once per clone:   git config core.hooksPath .githooks
+#
+# Checks:
+#   1. leak-guard  — secrets / private paths / OS cruft (always)
+#   2. build + ABI — only when a plugin's native source is staged
+#
+# Skip in an emergency with:  git commit --no-verify
+set -e
+
+ROOT=$(git rev-parse --show-toplevel)
+cd "$ROOT"
+
+echo "[pre-commit] leak-guard"
+sh scripts/leak-guard.sh
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+
+# --- markdown-wlx: build + verify universal ABI only if its source changed ---
+if printf '%s\n' "$staged" | grep -qE '^markdown-wlx/(MarkdownView\.m|listplug\.h|build\.sh)$'; then
+    echo "[pre-commit] markdown-wlx source staged -> building"
+    ( cd markdown-wlx && ./build.sh >/dev/null )
+    wlx="markdown-wlx/build/MarkdownView.wlx"
+
+    # Universal binary (use `file`; portable and sandbox-safe).
+    info=$(file "$wlx")
+    case "$info" in
+        *x86_64*arm64* | *arm64*x86_64*) ;;
+        *) echo "[pre-commit] FAIL: not a universal binary -> $info"; exit 1 ;;
+    esac
+
+    # All five WLX entry points exported.
+    for sym in _ListLoad _ListLoadNext _ListCloseWindow \
+               _ListGetDetectString _ListSetDefaultParams; do
+        nm -gU "$wlx" | grep -q " T $sym" \
+            || { echo "[pre-commit] FAIL: missing export $sym"; exit 1; }
+    done
+    echo "[pre-commit] markdown-wlx OK (universal, all ABI exports present)"
+fi
+
+echo "[pre-commit] passed"

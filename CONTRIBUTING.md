@@ -30,11 +30,20 @@ Before committing:
 bash scripts/leak-guard.sh      # must print "clean ✓"
 ```
 
-### Optional: pre-commit hook
+### Pre-commit hook (deterministic gate)
+
+The repo ships a version-controlled pre-commit hook in [`.githooks/`](.githooks/)
+that runs the **Tier 1** deterministic gate: `leak-guard` on every commit, plus a
+universal build + ABI-export check whenever a plugin's native source is staged.
+Enable it once per clone:
 
 ```sh
-ln -sf ../../scripts/leak-guard.sh .git/hooks/pre-commit
+git config core.hooksPath .githooks
 ```
+
+It's fast and blocking; bypass in an emergency with `git commit --no-verify`.
+Semantic code review (`/code-review`) is **not** part of this hook — run it at
+push / PR / release boundaries, on the accumulated diff.
 
 ## Plugin layout convention
 
