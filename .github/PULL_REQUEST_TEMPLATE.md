@@ -13,6 +13,7 @@
 - [ ] Relevant `test/` harness run locally (render / Esc / etc.)
 - [ ] `bash scripts/leak-guard.sh` is clean
 - [ ] Tested live in Double Commander
+- [ ] `/code-review` run on this diff; findings fixed or filed as issues
 
 ## Notes for reviewers
 
