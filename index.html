@@ -4,67 +4,95 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Double Commander plugins for macOS — Markdown viewer &amp; media-info columns</title>
-<meta name="description" content="Free, native macOS plugins for Double Commander: a Markdown preview/viewer plugin (WLX) that renders .md files in the viewer, and a media-info content plugin (WDX) that shows image &amp; video resolution, duration, and PDF page count as custom columns. Universal binaries, no dependencies, open source.">
+<meta name="description" content="Free, native macOS plugins for Double Commander: a Markdown preview/viewer plugin (WLX) that renders .md files — with Mermaid diagrams &amp; KaTeX math — in the viewer, and a media-info content plugin (WDX) that shows image &amp; video resolution, duration, and PDF page count as custom columns. Universal binaries, no dependencies, open source.">
 <link rel="canonical" href="https://nikolaisachok.github.io/DC-plugins/">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Double Commander plugins for macOS — Markdown viewer &amp; media-info columns">
-<meta property="og:description" content="Native macOS plugins for Double Commander: a Markdown viewer plugin and a media-info plugin showing image/video resolution &amp; duration as columns. Universal, open source, no dependencies.">
+<meta property="og:description" content="Native macOS plugins for Double Commander: a Markdown viewer (Mermaid + KaTeX) and a media-info plugin showing image/video resolution &amp; duration as columns. Universal, open source, no dependencies.">
 <meta property="og:url" content="https://nikolaisachok.github.io/DC-plugins/">
 <meta property="og:image" content="https://nikolaisachok.github.io/DC-plugins/assets/screenshot-markdown.png">
 <meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Double Commander macOS plugins — MarkdownView & MediaInfo",
+  "operatingSystem": "macOS 11+",
+  "applicationCategory": "DeveloperApplication",
+  "url": "https://nikolaisachok.github.io/DC-plugins/",
+  "downloadUrl": "https://github.com/NikolaiSachok/DC-plugins/releases",
+  "softwareHelp": "https://github.com/NikolaiSachok/DC-plugins/wiki",
+  "license": "https://opensource.org/licenses/MIT",
+  "description": "Native macOS plugins for Double Commander: a Markdown preview/viewer plugin (WLX) with Mermaid diagrams and KaTeX math, and a media-info content plugin (WDX) showing image and video resolution, duration, and PDF page count as custom columns.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
 <style>
   :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --fg:#e6edf3; --muted:#9da7b3; --accent:#58a6ff; --code:#1f2630; }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
   a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
-  .wrap { max-width:880px; margin:0 auto; padding:0 20px; }
-  header { padding:64px 0 32px; text-align:center; border-bottom:1px solid var(--border); }
-  h1 { font-size:2.2rem; line-height:1.2; margin:0 0 12px; }
-  h1 .sub { display:block; font-size:1.05rem; font-weight:400; color:var(--muted); margin-top:10px; }
-  h2 { font-size:1.5rem; margin:48px 0 12px; }
-  h3 { margin:24px 0 6px; }
-  .badges { margin-top:20px; }
-  .badges a { display:inline-block; margin:4px 6px; padding:8px 16px; border:1px solid var(--border); border-radius:8px; background:var(--panel); font-size:.95rem; }
+  .wrap { max-width:900px; margin:0 auto; padding:0 20px; }
+  header { padding:72px 0 8px; text-align:center;
+           background:radial-gradient(1200px 380px at 50% -120px, rgba(88,166,255,.16), transparent 70%); }
+  h1 { font-size:2.3rem; line-height:1.18; margin:0 0 14px; letter-spacing:-.01em; }
+  h1 .sub { display:block; font-size:1.05rem; font-weight:400; color:var(--muted); margin:14px auto 0; max-width:680px; }
+  h2 { font-size:1.5rem; margin:52px 0 12px; }
+  .badges { margin-top:24px; }
+  .badges a { display:inline-block; margin:5px 6px; padding:9px 18px; border:1px solid var(--border); border-radius:9px; background:var(--panel); font-size:.95rem; }
   .badges a.primary { background:var(--accent); color:#08111f; border-color:var(--accent); font-weight:600; }
-  .card { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:24px; margin:20px 0; }
-  .tag { display:inline-block; font-size:.75rem; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); border:1px solid var(--border); border-radius:6px; padding:2px 8px; margin-left:8px; vertical-align:middle; }
-  ul { padding-left:20px; } li { margin:4px 0; }
+  figure.hero { margin:40px auto 8px; max-width:560px; text-align:center; }
+  figure.hero img { width:100%; border:1px solid var(--border); border-radius:12px;
+                    box-shadow:0 16px 50px rgba(0,0,0,.55); background:#fff; display:block; }
+  figure.hero figcaption { color:var(--muted); font-size:.85rem; margin-top:12px; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:24px; margin:18px 0; }
+  .tag { display:inline-block; font-size:.72rem; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); border:1px solid var(--border); border-radius:6px; padding:2px 8px; margin-left:8px; vertical-align:middle; }
+  ul { padding-left:20px; } li { margin:5px 0; }
   pre { background:var(--code); border:1px solid var(--border); border-radius:8px; padding:14px 16px; overflow:auto; }
   code { font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
   p code, li code { background:var(--code); padding:1px 6px; border-radius:5px; }
-  img.shot { width:100%; border:1px solid var(--border); border-radius:10px; margin-top:14px; }
   .muted { color:var(--muted); }
-  footer { margin:56px 0 40px; padding-top:24px; border-top:1px solid var(--border); color:var(--muted); font-size:.9rem; text-align:center; }
-  .cols { font:13px/1.5 ui-monospace,Menlo,monospace; background:var(--code); border:1px solid var(--border); border-radius:8px; padding:14px; overflow:auto; white-space:pre; color:var(--fg); }
+  .cols { font:13px/1.6 ui-monospace,Menlo,monospace; background:var(--code); border:1px solid var(--border); border-radius:8px; padding:14px 16px; overflow:auto; white-space:pre; color:var(--fg); }
+  footer { margin:60px 0 44px; padding-top:24px; border-top:1px solid var(--border); color:var(--muted); font-size:.9rem; text-align:center; }
 </style>
 </head>
 <body>
 <header>
   <div class="wrap">
     <h1>Double Commander plugins for macOS
-      <span class="sub">A native <strong>Markdown viewer</strong> plugin and a <strong>media-info</strong> plugin (image &amp; video resolution, duration, PDF page count) for Double Commander — universal, open source, no dependencies.</span>
+      <span class="sub">A native <strong>Markdown viewer</strong> plugin (with Mermaid diagrams &amp; KaTeX math) and a <strong>media-info</strong> plugin that shows image &amp; video resolution, duration, and PDF page count — universal, open source, no dependencies.</span>
     </h1>
     <div class="badges">
       <a class="primary" href="https://github.com/NikolaiSachok/DC-plugins/releases">Download latest release</a>
       <a href="https://github.com/NikolaiSachok/DC-plugins">View on GitHub</a>
-      <a href="https://github.com/NikolaiSachok/DC-plugins/wiki">Documentation / wiki</a>
+      <a href="https://github.com/NikolaiSachok/DC-plugins/wiki">Documentation</a>
     </div>
   </div>
 </header>
 
 <main class="wrap">
+  <figure class="hero">
+    <picture>
+      <source srcset="assets/screenshot-markdown.webp" type="image/webp">
+      <img src="assets/screenshot-markdown.png" width="1600" height="1998"
+           loading="eager" decoding="async"
+           alt="A Markdown file rendered by the MarkdownView plugin in Double Commander on macOS — showing KaTeX math, a Mermaid flowchart, syntax-highlighted code, and tables">
+    </picture>
+    <figcaption>Real output: <code>.md</code> rendered in Double Commander's viewer — KaTeX math, a Mermaid diagram, highlighted code, and tables, all from one plugin.</figcaption>
+  </figure>
+
   <p>Two small, fast, native plugins that fill real gaps in <a href="https://doublecmd.sourceforge.io/">Double Commander</a> on macOS. Each is a universal binary (Apple Silicon + Intel), built with no third-party libraries and no network access, and tested against the real built artifact. They use the Total Commander plugin ABI, so they load straight into Double Commander.</p>
 
   <h2>MarkdownView <span class="tag">WLX · lister</span></h2>
   <div class="card">
-    <p><strong>A Markdown preview/viewer plugin for Double Commander on macOS.</strong> Select any <code>.md</code> file and press <strong>F3</strong> — it opens beautifully rendered instead of as raw text, and you can switch back to plain text any time.</p>
+    <p><strong>A Markdown preview/viewer plugin for Double Commander on macOS.</strong> Select any <code>.md</code> file and press <strong>F3</strong> — it opens beautifully rendered instead of as raw text (as shown above), and you can switch back to plain text any time.</p>
     <ul>
       <li>GitHub-style rendering, syntax highlighting, tables &amp; task lists (GitHub Flavored Markdown)</li>
       <li><strong>Mermaid diagrams</strong> and <strong>KaTeX math</strong> (loaded only for files that use them)</li>
       <li>Automatic light/dark theming; relative images; scroll position preserved across files</li>
       <li>Content is sanitized (DOMPurify) before rendering — safe on untrusted files</li>
     </ul>
-    <img class="shot" src="assets/screenshot-markdown.png" alt="A Markdown file rendered in Double Commander's viewer on macOS by the MarkdownView WLX plugin">
   </div>
 
   <h2>MediaInfo <span class="tag">WDX · content</span></h2>

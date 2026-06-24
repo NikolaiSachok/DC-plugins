@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://nikolaisachok.github.io/DC-plugins/sitemap.xml

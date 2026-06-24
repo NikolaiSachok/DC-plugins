@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Double Commander macOS plugins">
+  <rect width="64" height="64" rx="14" fill="#58a6ff"/>
+  <path d="M13 45V19h6.5l8 10 8-10H42v26h-6.5V30l-8 10-8-10v15z" fill="#0d1117"/>
+  <path d="M48 19h4v14h4l-6 8-6-8h4z" fill="#0d1117"/>
+</svg>
