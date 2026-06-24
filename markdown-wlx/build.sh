@@ -7,6 +7,8 @@ OUT="build/MarkdownView.wlx"
 # Universal binary so it runs on both Apple Silicon and Intel Macs.
 ARCHS=(-arch arm64 -arch x86_64)
 
+mkdir -p "$(dirname "$OUT")"
+
 echo "==> Compiling $OUT"
 clang -dynamiclib $ARCHS \
   -mmacosx-version-min=11.0 \
