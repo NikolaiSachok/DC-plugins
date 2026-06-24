@@ -1,0 +1,55 @@
+name: Release media-info-wdx
+
+# Tag a release: git tag media-info-wdx-v0.1.0 && git push origin media-info-wdx-v0.1.0
+on:
+  push:
+    tags:
+      - 'media-info-wdx-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build universal plugin
+        working-directory: media-info-wdx
+        run: ./build.sh
+
+      - name: Verify (real-artifact harness)
+        working-directory: media-info-wdx
+        run: |
+          clang -arch arm64 -fobjc-arc -framework Foundation \
+            -framework CoreGraphics -framework ImageIO \
+            -o build/test_host test/test_host.m
+          ./build/test_host build/MediaInfo.wdx
+
+      - name: Assemble install bundle
+        working-directory: media-info-wdx
+        run: |
+          BUNDLE="MediaInfo"
+          rm -rf "$BUNDLE" && mkdir "$BUNDLE"
+          cp build/MediaInfo.wdx "$BUNDLE"/
+          cp install.sh register_plugin.py README.md THIRD_PARTY_LICENSES.md "$BUNDLE"/
+          zip -rqy "MediaInfo-${GITHUB_REF_NAME}.zip" "$BUNDLE"
+          shasum -a 256 "MediaInfo-${GITHUB_REF_NAME}.zip" > "MediaInfo-${GITHUB_REF_NAME}.zip.sha256"
+          ls -la *.zip*
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          body: |
+            Prebuilt universal (arm64 + x86_64) `MediaInfo.wdx` content plugin for Double Commander on macOS.
+
+            Adds custom-column / tooltip fields for image & video resolution, audio & video duration, bitrate, codecs, and PDF page count. No dependencies, no network.
+
+            **Install (no Xcode needed):** unzip, quit Double Commander, then run `./install.sh`.
+            Verify the download with the included `.sha256`.
+          files: |
+            media-info-wdx/MediaInfo-${{ github.ref_name }}.zip
+            media-info-wdx/MediaInfo-${{ github.ref_name }}.zip.sha256

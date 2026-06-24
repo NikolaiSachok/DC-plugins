@@ -14,6 +14,7 @@ reproducible and documented.
 | Plugin | Type | What it does | Status |
 |--------|------|--------------|--------|
 | [`markdown-wlx`](markdown-wlx/) | WLX (lister) | Renders Markdown beautifully in DC's viewer (F3) — GitHub-style CSS, syntax highlighting, tables, task lists, **Mermaid diagrams**, **KaTeX math**, configurable light/dark. Toggle back to raw text anytime. | ✅ stable |
+| [`media-info-wdx`](media-info-wdx/) | WDX (content) | Shows media metadata in custom **columns** & tooltips — image/video **resolution**, audio/video **duration**, bitrate, codecs, PDF **page count**, plus an adaptive `Summary` field. Native ImageIO / AVFoundation / CGPDF; no deps, no network. | ✅ stable |
 
 More plugins will follow; the repo layout and the [contributor guide](CONTRIBUTING.md)
 are built for that.
@@ -46,7 +47,9 @@ table (the Total Commander plugin ABI). A **WLX** lister plugin like `markdown-w
 is a `.wlx` Mach-O dylib exporting `ListLoad`, `ListLoadNext`, `ListCloseWindow`,
 `ListGetDetectString`, and `ListSetDefaultParams`. On macOS the window handles in
 that ABI are `NSView*`, so a viewer plugin builds an `NSView` (here, a `WKWebView`)
-and hands it back to DC.
+and hands it back to DC. A **WDX** content plugin like `media-info-wdx` is a `.wdx`
+dylib exporting `ContentGetSupportedField` / `ContentGetValue` instead — it returns
+*data fields* DC renders in custom columns and tooltips rather than a view.
 
 The deeper design — the ABI, the rendering pipeline, and a couple of instructive
 macOS gotchas (e.g. why `WKWebView` swallows the Escape key, and the fix) — is in
@@ -71,7 +74,8 @@ Every plugin in this collection aims to hold the same bar:
 
 ```
 .
-├── markdown-wlx/            # the Markdown lister plugin (source, assets, tests, docs)
+├── markdown-wlx/            # Markdown lister plugin (WLX): renders .md in the viewer
+├── media-info-wdx/          # media-metadata content plugin (WDX): dimensions, duration, …
 ├── docs/                    # cross-plugin docs (architecture, adding a plugin)
 ├── scripts/leak-guard.sh    # generic pre-publish safety gate
 ├── .github/                 # issue/PR templates, CI workflow

@@ -6,6 +6,36 @@ independently and tagged below.
 
 ## [Unreleased]
 
+## media-info-wdx 0.1.0 — 2026-06-24
+
+### Added
+- **media-info-wdx:** new WDX **content plugin** that exposes per-file media
+  metadata as Double Commander custom-column / tooltip fields — image & video
+  **resolution**, audio & video **duration**, bitrate, sample rate, channels,
+  video/audio **codecs**, image DPI / bit depth / megapixels, and PDF **page
+  count**. An adaptive `Summary` field shows the single most useful value per file
+  type (image → `W × H`, video → `W × H · m:ss`, audio → `m:ss`, pdf → `N pages`),
+  so one column serves every type and is blank for the rest.
+- Backed entirely by macOS system frameworks — **ImageIO** (header-only image
+  reads), **AVFoundation** (audio/video), **CoreGraphics/CGPDF** (PDF). No
+  third-party libraries, no network.
+- **AVI** support via a self-contained RIFF `avih` reader (dimensions, duration,
+  frame rate) — AVFoundation cannot open AVI on macOS, so the plugin parses the
+  header itself.
+- **Robust under Double Commander's FPC runtime:** DC enables floating-point
+  exception traps, which turn otherwise-harmless FP math inside Apple's media
+  frameworks (e.g. ImageIO's RAW/MakerNote path) into a fatal "Access violation".
+  The plugin masks FP exceptions around every system-framework call and restores
+  the host environment before returning, so browsing folders of camera JPEGs no
+  longer crashes the viewer.
+- Non-blocking: the AVFoundation path honors `CONTENT_DELAYIFSLOW`, deferring slow
+  reads to DC's background thread so the panel never stalls while scrolling.
+  Parsed values are cached per `path + mtime`.
+- Universal binary (arm64 + x86_64), ad-hoc signed. Real-artifact test harness
+  (`test/test_host.m`) `dlopen`s the built `.wdx` and asserts field values against
+  a synthesized PNG, PDF, WAV, and AVI, the deferral protocol, and survival under
+  FPC-style FP-exception traps.
+
 ## markdown-wlx 0.3.0 — 2026-06-24
 
 ### Added
