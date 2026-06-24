@@ -1,0 +1,24 @@
+; MarkdownView plugin settings (optional).
+;
+; Copy this file to "MarkdownView.ini" next to MarkdownView.wlx (or use the
+; ini path Double Commander assigns the plugin) and edit. Changes apply the next
+; time you open a file — no restart needed. Delete the file to return to defaults.
+
+[MarkdownView]
+
+; Color theme: auto (follow macOS), light, or dark.
+theme = auto
+
+; Content column width in pixels.
+maxwidth = 980
+
+; Base font size in pixels.
+fontsize = 16
+
+; Render ```mermaid code blocks as diagrams (1/0). Mermaid only loads for files
+; that actually contain a mermaid block.
+mermaid = 1
+
+; Render $inline$ and $$block$$ math with KaTeX (1/0). KaTeX only loads for files
+; that actually contain a '$'.
+math = 1

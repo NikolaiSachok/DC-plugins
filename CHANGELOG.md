@@ -6,6 +6,24 @@ independently and tagged below.
 
 ## [Unreleased]
 
+### markdown-wlx
+- **Mermaid diagrams** — ` ```mermaid ` blocks render as diagrams (Mermaid loads only
+  for files that contain one). [#2]
+- **Math** — `$inline$` and `$$block$$` rendered with KaTeX, vendored offline incl.
+  fonts (KaTeX loads only for files that contain `$`). [#3]
+- **User configuration** via an optional `MarkdownView.ini` (`[MarkdownView]`):
+  `theme` (auto/light/dark), `maxwidth`, `fontsize`, `mermaid`, `math`. Re-read on
+  every open — no restart needed. [#4]
+- **Scroll position preserved** across viewer navigation: returning to a file
+  restores its offset; a new file starts at the top. [#5]
+- Two more sample documents (`samples/features.md`, `samples/basics.md`) and a
+  scroll-restore regression harness (`test/scroll_verify.m`). [#8]
+
+### Repo
+- Release workflow: tagging `markdown-wlx-v*` builds the universal plugin and
+  publishes a prebuilt, no-Xcode install bundle (zip + SHA-256) to GitHub Releases. [#6]
+- `install.sh` now also installs from a prebuilt release bundle (no build step).
+
 ## markdown-wlx 0.1.0 — 2026-06-24
 
 ### Added

@@ -1,0 +1,47 @@
+name: Release markdown-wlx
+
+# Tag a release: git tag markdown-wlx-v0.2.0 && git push origin markdown-wlx-v0.2.0
+on:
+  push:
+    tags:
+      - 'markdown-wlx-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build universal plugin
+        working-directory: markdown-wlx
+        run: ./build.sh
+
+      - name: Assemble install bundle
+        working-directory: markdown-wlx
+        run: |
+          BUNDLE="MarkdownView"
+          rm -rf "$BUNDLE" && mkdir "$BUNDLE"
+          cp build/MarkdownView.wlx "$BUNDLE"/
+          cp -R assets "$BUNDLE"/assets
+          cp install.sh register_plugin.py README.md \
+             THIRD_PARTY_LICENSES.md MarkdownView.ini.sample "$BUNDLE"/
+          zip -rqy "MarkdownView-${GITHUB_REF_NAME}.zip" "$BUNDLE"
+          shasum -a 256 "MarkdownView-${GITHUB_REF_NAME}.zip" > "MarkdownView-${GITHUB_REF_NAME}.zip.sha256"
+          ls -la *.zip*
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          body: |
+            Prebuilt universal (arm64 + x86_64) `MarkdownView.wlx` for Double Commander on macOS.
+
+            **Install (no Xcode needed):** unzip, quit Double Commander, then run `./install.sh`.
+            Verify the download with the included `.sha256`.
+          files: |
+            markdown-wlx/MarkdownView-${{ github.ref_name }}.zip
+            markdown-wlx/MarkdownView-${{ github.ref_name }}.zip.sha256

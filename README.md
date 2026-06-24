@@ -13,7 +13,7 @@ reproducible and documented.
 
 | Plugin | Type | What it does | Status |
 |--------|------|--------------|--------|
-| [`markdown-wlx`](markdown-wlx/) | WLX (lister) | Renders Markdown beautifully in DC's viewer (F3) — GitHub-style CSS, syntax highlighting, tables, task lists, light/dark. Toggle back to raw text anytime. | ✅ stable |
+| [`markdown-wlx`](markdown-wlx/) | WLX (lister) | Renders Markdown beautifully in DC's viewer (F3) — GitHub-style CSS, syntax highlighting, tables, task lists, **Mermaid diagrams**, **KaTeX math**, configurable light/dark. Toggle back to raw text anytime. | ✅ stable |
 
 More plugins will follow; the repo layout and the [contributor guide](CONTRIBUTING.md)
 are built for that.

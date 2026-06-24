@@ -1,7 +1,8 @@
 /*
  * MarkdownView.wlx — Double Commander Lister (WLX) plugin for macOS.
  * Renders Markdown files in a WKWebView with GitHub-style CSS, syntax
- * highlighting, tables, task lists and automatic light/dark theming.
+ * highlighting, GitHub Flavored Markdown, Mermaid diagrams, KaTeX math, and
+ * automatic (or configured) light/dark theming.
  *
  * On macOS, Double Commander passes/expects NSView* as the window handle.
  * The viewer's built-in mode switch still lets the user flip back to the
@@ -25,14 +26,6 @@ static NSString *PluginDirectory(void) {
     return nil;
 }
 
-static NSString *ReadFile(NSString *path) {
-    if (!path) return @"";
-    NSString *s = [NSString stringWithContentsOfFile:path
-                                            encoding:NSUTF8StringEncoding
-                                               error:NULL];
-    return s ?: @"";
-}
-
 /* Absolute file:// URL string for an asset shipped next to the .wlx. */
 static NSString *AssetURL(NSString *name) {
     NSString *dir = PluginDirectory();
@@ -40,6 +33,55 @@ static NSString *AssetURL(NSString *name) {
     NSString *path = [[dir stringByAppendingPathComponent:@"assets"]
                          stringByAppendingPathComponent:name];
     return [[NSURL fileURLWithPath:path] absoluteString];
+}
+
+#pragma mark - Configuration (optional MarkdownView.ini)
+
+static NSString *gIniPath = nil; /* set by ListSetDefaultParams */
+
+static NSString *ConfigIniPath(void) {
+    if (gIniPath.length) return gIniPath;
+    NSString *dir = PluginDirectory();
+    return dir ? [dir stringByAppendingPathComponent:@"MarkdownView.ini"] : nil;
+}
+
+/* Read the optional [MarkdownView] section. Re-read every load so edits apply
+ * without restarting Double Commander. Unset keys keep their defaults. */
+static NSDictionary *ReadConfig(void) {
+    NSMutableDictionary *cfg = [@{ @"theme": @"auto", @"maxwidth": @"980",
+                                   @"fontsize": @"16", @"mermaid": @"1",
+                                   @"math": @"1" } mutableCopy];
+    NSString *path = ConfigIniPath();
+    NSString *text = path ? [NSString stringWithContentsOfFile:path
+                                encoding:NSUTF8StringEncoding error:NULL] : nil;
+    if (!text) return cfg;
+
+    NSCharacterSet *ws = [NSCharacterSet whitespaceCharacterSet];
+    BOOL inSection = NO;
+    for (NSString *raw in [text componentsSeparatedByCharactersInSet:
+                              [NSCharacterSet newlineCharacterSet]]) {
+        NSString *line = [raw stringByTrimmingCharactersInSet:ws];
+        if (line.length == 0 || [line hasPrefix:@";"] || [line hasPrefix:@"#"]) continue;
+        if ([line hasPrefix:@"["]) {
+            inSection = [[line lowercaseString] isEqualToString:@"[markdownview]"];
+            continue;
+        }
+        if (!inSection) continue;
+        NSRange eq = [line rangeOfString:@"="];
+        if (eq.location == NSNotFound) continue;
+        NSString *k = [[[line substringToIndex:eq.location]
+                          stringByTrimmingCharactersInSet:ws] lowercaseString];
+        NSString *v = [[line substringFromIndex:eq.location + 1]
+                          stringByTrimmingCharactersInSet:ws];
+        if (k.length) cfg[k] = v;
+    }
+    return cfg;
+}
+
+static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
+    NSString *v = [[cfg[key] description] lowercaseString];
+    return [v isEqualToString:@"1"] || [v isEqualToString:@"true"] ||
+           [v isEqualToString:@"yes"] || [v isEqualToString:@"on"];
 }
 
 #pragma mark - MDWebView
@@ -63,10 +105,31 @@ static NSString *AssetURL(NSString *name) {
 
 #pragma mark - MDView
 
+@class MDView;
+
+/* Receives scroll offsets from the page. Holds the view weakly so the
+ * userContentController -> handler -> view chain is not a retain cycle. */
+@interface MDScrollSink : NSObject <WKScriptMessageHandler>
+@property (nonatomic, weak) MDView *owner;
+@end
+
 @interface MDView : NSView
 @property (nonatomic, strong) WKWebView *web;
-@property (nonatomic, copy)   NSString  *tmpHTMLPath;
+@property (nonatomic, strong) MDScrollSink *sink;
+@property (nonatomic, copy)   NSString *tmpHTMLPath;
+@property (nonatomic, copy)   NSString *currentPath;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *scrollByPath;
 - (BOOL)loadMarkdownAtPath:(NSString *)mdPath;
+@end
+
+@implementation MDScrollSink
+- (void)userContentController:(WKUserContentController *)ucc
+      didReceiveScriptMessage:(WKScriptMessage *)message {
+    MDView *v = self.owner;
+    if (v && v.currentPath && [message.body isKindOfClass:[NSNumber class]]) {
+        v.scrollByPath[v.currentPath] = (NSNumber *)message.body;
+    }
+}
 @end
 
 @implementation MDView
@@ -75,15 +138,19 @@ static NSString *AssetURL(NSString *name) {
     self = [super initWithFrame:frame];
     if (self) {
         self.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        _scrollByPath = [NSMutableDictionary dictionary];
+
+        _sink = [[MDScrollSink alloc] init];
+        _sink.owner = self;
 
         WKWebViewConfiguration *cfg = [[WKWebViewConfiguration alloc] init];
+        [cfg.userContentController addScriptMessageHandler:_sink name:@"dcmd"];
+
         _web = [[MDWebView alloc] initWithFrame:self.bounds configuration:cfg];
         _web.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-        // Allow our generated page to read local image files referenced by the doc.
         @try { [_web setValue:@NO forKey:@"drawsBackground"]; } @catch (__unused id e) {}
         [self addSubview:_web];
 
-        // One stable temp file per view instance; overwritten on reload.
         NSString *name = [NSString stringWithFormat:@"dc-md-preview-%d-%p.html",
                           getpid(), (void *)self];
         _tmpHTMLPath = [NSTemporaryDirectory() stringByAppendingPathComponent:name];
@@ -95,55 +162,97 @@ static NSString *AssetURL(NSString *name) {
     NSData *raw = [NSData dataWithContentsOfFile:mdPath];
     if (!raw) raw = [NSData data];
     NSString *b64 = [raw base64EncodedStringWithOptions:0];
+    NSString *mdText = [[NSString alloc] initWithData:raw encoding:NSUTF8StringEncoding] ?: @"";
+
+    self.currentPath = mdPath;
+    long savedY = [self.scrollByPath[mdPath] longValue];
+
+    NSDictionary *cfg = ReadConfig();
+    NSString *theme = [[cfg[@"theme"] description] lowercaseString];
+    if (![theme isEqualToString:@"light"] && ![theme isEqualToString:@"dark"]) theme = @"auto";
+    long maxWidth = MAX(320, [cfg[@"maxwidth"] integerValue] ?: 980);
+    long fontSize = MAX(8,   [cfg[@"fontsize"] integerValue] ?: 16);
+    BOOL wantMermaid = CfgBool(cfg, @"mermaid") &&
+                       [mdText rangeOfString:@"```mermaid"].location != NSNotFound;
+    BOOL wantMath    = CfgBool(cfg, @"math") &&
+                       [mdText rangeOfString:@"$"].location != NSNotFound;
 
     NSString *mdDir = [mdPath stringByDeletingLastPathComponent];
     NSString *baseHref = [[NSURL fileURLWithPath:mdDir isDirectory:YES] absoluteString];
     NSString *title = [[mdPath lastPathComponent]
                           stringByReplacingOccurrencesOfString:@"<" withString:@"&lt;"];
 
-    /* Reference assets by absolute file:// URLs — never inline JS, because
-     * minified libraries can contain a literal "</script>" that would
-     * truncate an inline <script> tag. loadFileURL grants read access. */
-    NSString *markdownCSS = AssetURL(@"github-markdown.css");
-    NSString *hlLight     = AssetURL(@"hl-github.css");
-    NSString *hlDark      = AssetURL(@"hl-github-dark.css");
-    NSString *markedJS    = AssetURL(@"marked.min.js");
-    NSString *hlJS        = AssetURL(@"highlight.min.js");
+    /* ---- theme-dependent stylesheets ---- */
+    NSMutableString *head = [NSMutableString string];
+    if ([theme isEqualToString:@"light"]) {
+        [head appendFormat:@"<link rel=\"stylesheet\" href=\"%@\">", AssetURL(@"github-markdown-light.css")];
+        [head appendFormat:@"<link rel=\"stylesheet\" href=\"%@\">", AssetURL(@"hl-github.css")];
+        [head appendString:@"<style>:root{color-scheme:light;}html,body{background:#fff;}</style>"];
+    } else if ([theme isEqualToString:@"dark"]) {
+        [head appendFormat:@"<link rel=\"stylesheet\" href=\"%@\">", AssetURL(@"github-markdown-dark.css")];
+        [head appendFormat:@"<link rel=\"stylesheet\" href=\"%@\">", AssetURL(@"hl-github-dark.css")];
+        [head appendString:@"<style>:root{color-scheme:dark;}html,body{background:#0d1117;}</style>"];
+    } else {
+        [head appendFormat:@"<link rel=\"stylesheet\" href=\"%@\">", AssetURL(@"github-markdown.css")];
+        [head appendFormat:@"<link rel=\"stylesheet\" href=\"%@\" media=\"(prefers-color-scheme: light)\">", AssetURL(@"hl-github.css")];
+        [head appendFormat:@"<link rel=\"stylesheet\" href=\"%@\" media=\"(prefers-color-scheme: dark)\">", AssetURL(@"hl-github-dark.css")];
+        [head appendString:@"<style>:root{color-scheme:light dark;}"
+                            @"html,body{background:#fff;}"
+                            @"@media(prefers-color-scheme:dark){html,body{background:#0d1117;}}</style>"];
+    }
+    [head appendFormat:@"<style>html,body{margin:0;padding:0;}"
+                       @".markdown-body{box-sizing:border-box;max-width:%ldpx;margin:0 auto;"
+                       @"padding:32px 44px;font-size:%ldpx;}"
+                       @"@media(max-width:767px){.markdown-body{padding:18px;}}"
+                       @".mermaid{display:flex;justify-content:center;margin:16px 0;}</style>",
+                       maxWidth, fontSize];
 
-    NSString *html = [NSString stringWithFormat:@""
-        "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
-        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-        "<base href=\"%@\">"
-        "<title>%@</title>"
-        "<link rel=\"stylesheet\" href=\"%@\">"
-        "<link rel=\"stylesheet\" href=\"%@\" media=\"(prefers-color-scheme: light)\">"
-        "<link rel=\"stylesheet\" href=\"%@\" media=\"(prefers-color-scheme: dark)\">"
-        "<style>"
-        ":root{color-scheme: light dark;}"
-        "html,body{margin:0;padding:0;background:#ffffff;}"
-        "@media (prefers-color-scheme: dark){html,body{background:#0d1117;}}"
-        ".markdown-body{box-sizing:border-box;max-width:980px;margin:0 auto;"
-        "padding:32px 44px;}"
-        "@media (max-width:767px){.markdown-body{padding:18px;}}"
-        "</style>"
-        "<script src=\"%@\"></script>"
-        "<script src=\"%@\"></script>"
-        "</head><body>"
-        "<article class=\"markdown-body\" id=\"content\"></article>"
-        "<script id=\"md-data\" type=\"application/x-markdown-base64\">%@</script>"
-        "<script>"
+    /* ---- libraries ---- */
+    [head appendFormat:@"<script src=\"%@\"></script>", AssetURL(@"marked.min.js")];
+    [head appendFormat:@"<script src=\"%@\"></script>", AssetURL(@"highlight.min.js")];
+    if (wantMermaid) {
+        [head appendFormat:@"<script src=\"%@\"></script>", AssetURL(@"mermaid/mermaid.min.js")];
+    }
+    if (wantMath) {
+        [head appendFormat:@"<link rel=\"stylesheet\" href=\"%@\">", AssetURL(@"katex/katex.min.css")];
+        [head appendFormat:@"<script src=\"%@\"></script>", AssetURL(@"katex/katex.min.js")];
+        [head appendFormat:@"<script src=\"%@\"></script>", AssetURL(@"katex/auto-render.min.js")];
+    }
+
+    NSString *bootstrap = [NSString stringWithFormat:@""
+        "var __theme=\"%@\";var __scrollY=%ld;"
         "window.addEventListener('load',function(){"
         "var b64=document.getElementById('md-data').textContent.trim();"
-        "var bytes=Uint8Array.from(atob(b64),function(c){return c.charCodeAt(0);});"
-        "var md=new TextDecoder('utf-8').decode(bytes);"
+        "var md=new TextDecoder('utf-8').decode(Uint8Array.from(atob(b64),function(c){return c.charCodeAt(0);}));"
         "try{marked.setOptions({gfm:true,breaks:false});}catch(e){}"
         "var out;try{out=marked.parse(md);}catch(e){out='<pre>'+String(e)+'</pre>';}"
-        "document.getElementById('content').innerHTML=out;"
-        "try{document.querySelectorAll('pre code').forEach(function(el){hljs.highlightElement(el);});}catch(e){}"
-        "});"
-        "</script>"
-        "</body></html>",
-        baseHref, title, markdownCSS, hlLight, hlDark, markedJS, hlJS, b64];
+        "var content=document.getElementById('content');content.innerHTML=out;"
+        "if(window.mermaid){"
+          "content.querySelectorAll('code.language-mermaid').forEach(function(code){"
+            "var d=document.createElement('div');d.className='mermaid';d.textContent=code.textContent;"
+            "var pre=code.parentNode;pre.parentNode.replaceChild(d,pre);});"
+          "try{var dark=(__theme==='dark')||(__theme==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches);"
+          "mermaid.initialize({startOnLoad:false,theme:dark?'dark':'default',securityLevel:'strict'});"
+          "mermaid.run();}catch(e){}}"
+        "try{content.querySelectorAll('pre code:not(.language-mermaid)').forEach(function(el){hljs.highlightElement(el);});}catch(e){}"
+        "if(window.renderMathInElement){try{renderMathInElement(content,{delimiters:["
+          "{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},"
+          "{left:'\\\\(',right:'\\\\)',display:false},{left:'\\\\[',right:'\\\\]',display:true}],"
+          "throwOnError:false});}catch(e){}}"
+        "try{if(__scrollY>0)window.scrollTo(0,__scrollY);}catch(e){}"
+        "var post=function(){try{window.webkit.messageHandlers.dcmd.postMessage(window.scrollY);}catch(e){}};"
+        "var t=null;window.addEventListener('scroll',function(){if(t)return;t=setTimeout(function(){t=null;post();},120);},{passive:true});"
+        "});", theme, savedY];
+
+    NSMutableString *html = [NSMutableString string];
+    [html appendString:@"<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
+                       @"<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"];
+    [html appendFormat:@"<base href=\"%@\"><title>%@</title>", baseHref, title];
+    [html appendString:head];
+    [html appendString:@"</head><body><article class=\"markdown-body\" id=\"content\"></article>"];
+    [html appendFormat:@"<script id=\"md-data\" type=\"application/x-markdown-base64\">%@</script>", b64];
+    [html appendFormat:@"<script>%@</script>", bootstrap];
+    [html appendString:@"</body></html>"];
 
     NSError *werr = nil;
     if (![html writeToFile:self.tmpHTMLPath atomically:YES
@@ -158,6 +267,7 @@ static NSString *AssetURL(NSString *name) {
 }
 
 - (void)dealloc {
+    [_web.configuration.userContentController removeScriptMessageHandlerForName:@"dcmd"];
     if (_tmpHTMLPath) {
         [[NSFileManager defaultManager] removeItemAtPath:_tmpHTMLPath error:NULL];
     }
@@ -229,5 +339,7 @@ void __stdcall ListGetDetectString(char *DetectString, int maxlen) {
 
 __attribute__((visibility("default")))
 void __stdcall ListSetDefaultParams(ListDefaultParamStruct *dps) {
-    (void)dps; /* nothing to configure */
+    if (dps && dps->DefaultIniName[0]) {
+        gIniPath = [NSString stringWithUTF8String:dps->DefaultIniName];
+    }
 }

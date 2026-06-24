@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="80" viewBox="0 0 320 80" role="img" aria-label="relative image sample">
+  <rect width="320" height="80" rx="10" fill="#0969da"/>
+  <text x="160" y="48" font-family="-apple-system, Helvetica, sans-serif" font-size="20"
+        fill="#ffffff" text-anchor="middle">relative image ✓</text>
+</svg>
