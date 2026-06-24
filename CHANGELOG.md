@@ -6,6 +6,8 @@ independently and tagged below.
 
 ## [Unreleased]
 
+## markdown-wlx 0.2.0 — 2026-06-24
+
 ### markdown-wlx
 - **Mermaid diagrams** — ` ```mermaid ` blocks render as diagrams (Mermaid loads only
   for files that contain one). [#2]
