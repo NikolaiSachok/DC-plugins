@@ -28,7 +28,7 @@ are built for that.
 
 ## `markdown-wlx` preview
 
-![Markdown rendered in Double Commander's viewer](markdown-wlx/docs/screenshot-light.png)
+![A Markdown file rendered in Double Commander's viewer by MarkdownView — with KaTeX math, a Mermaid diagram, syntax-highlighted code, and tables](markdown-wlx/docs/screenshot-light.png)
 
 Press **F3** on any `.md` file and it opens rendered. The built-in viewer's mode
 switch still lets you flip to the raw **Text** view (and back) at any time.
