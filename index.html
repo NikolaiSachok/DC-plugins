@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Double Commander plugins for macOS — Markdown viewer &amp; media-info columns</title>
+<meta name="description" content="Free, native macOS plugins for Double Commander: a Markdown preview/viewer plugin (WLX) that renders .md files in the viewer, and a media-info content plugin (WDX) that shows image &amp; video resolution, duration, and PDF page count as custom columns. Universal binaries, no dependencies, open source.">
+<link rel="canonical" href="https://nikolaisachok.github.io/DC-plugins/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Double Commander plugins for macOS — Markdown viewer &amp; media-info columns">
+<meta property="og:description" content="Native macOS plugins for Double Commander: a Markdown viewer plugin and a media-info plugin showing image/video resolution &amp; duration as columns. Universal, open source, no dependencies.">
+<meta property="og:url" content="https://nikolaisachok.github.io/DC-plugins/">
+<meta property="og:image" content="https://nikolaisachok.github.io/DC-plugins/assets/screenshot-markdown.png">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --fg:#e6edf3; --muted:#9da7b3; --accent:#58a6ff; --code:#1f2630; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
+  .wrap { max-width:880px; margin:0 auto; padding:0 20px; }
+  header { padding:64px 0 32px; text-align:center; border-bottom:1px solid var(--border); }
+  h1 { font-size:2.2rem; line-height:1.2; margin:0 0 12px; }
+  h1 .sub { display:block; font-size:1.05rem; font-weight:400; color:var(--muted); margin-top:10px; }
+  h2 { font-size:1.5rem; margin:48px 0 12px; }
+  h3 { margin:24px 0 6px; }
+  .badges { margin-top:20px; }
+  .badges a { display:inline-block; margin:4px 6px; padding:8px 16px; border:1px solid var(--border); border-radius:8px; background:var(--panel); font-size:.95rem; }
+  .badges a.primary { background:var(--accent); color:#08111f; border-color:var(--accent); font-weight:600; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:24px; margin:20px 0; }
+  .tag { display:inline-block; font-size:.75rem; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); border:1px solid var(--border); border-radius:6px; padding:2px 8px; margin-left:8px; vertical-align:middle; }
+  ul { padding-left:20px; } li { margin:4px 0; }
+  pre { background:var(--code); border:1px solid var(--border); border-radius:8px; padding:14px 16px; overflow:auto; }
+  code { font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+  p code, li code { background:var(--code); padding:1px 6px; border-radius:5px; }
+  img.shot { width:100%; border:1px solid var(--border); border-radius:10px; margin-top:14px; }
+  .muted { color:var(--muted); }
+  footer { margin:56px 0 40px; padding-top:24px; border-top:1px solid var(--border); color:var(--muted); font-size:.9rem; text-align:center; }
+  .cols { font:13px/1.5 ui-monospace,Menlo,monospace; background:var(--code); border:1px solid var(--border); border-radius:8px; padding:14px; overflow:auto; white-space:pre; color:var(--fg); }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>Double Commander plugins for macOS
+      <span class="sub">A native <strong>Markdown viewer</strong> plugin and a <strong>media-info</strong> plugin (image &amp; video resolution, duration, PDF page count) for Double Commander — universal, open source, no dependencies.</span>
+    </h1>
+    <div class="badges">
+      <a class="primary" href="https://github.com/NikolaiSachok/DC-plugins/releases">Download latest release</a>
+      <a href="https://github.com/NikolaiSachok/DC-plugins">View on GitHub</a>
+      <a href="https://github.com/NikolaiSachok/DC-plugins/wiki">Documentation / wiki</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <p>Two small, fast, native plugins that fill real gaps in <a href="https://doublecmd.sourceforge.io/">Double Commander</a> on macOS. Each is a universal binary (Apple Silicon + Intel), built with no third-party libraries and no network access, and tested against the real built artifact. They use the Total Commander plugin ABI, so they load straight into Double Commander.</p>
+
+  <h2>MarkdownView <span class="tag">WLX · lister</span></h2>
+  <div class="card">
+    <p><strong>A Markdown preview/viewer plugin for Double Commander on macOS.</strong> Select any <code>.md</code> file and press <strong>F3</strong> — it opens beautifully rendered instead of as raw text, and you can switch back to plain text any time.</p>
+    <ul>
+      <li>GitHub-style rendering, syntax highlighting, tables &amp; task lists (GitHub Flavored Markdown)</li>
+      <li><strong>Mermaid diagrams</strong> and <strong>KaTeX math</strong> (loaded only for files that use them)</li>
+      <li>Automatic light/dark theming; relative images; scroll position preserved across files</li>
+      <li>Content is sanitized (DOMPurify) before rendering — safe on untrusted files</li>
+    </ul>
+    <img class="shot" src="assets/screenshot-markdown.png" alt="A Markdown file rendered in Double Commander's viewer on macOS by the MarkdownView WLX plugin">
+  </div>
+
+  <h2>MediaInfo <span class="tag">WDX · content</span></h2>
+  <div class="card">
+    <p><strong>See image and video resolution (and more) in a Double Commander column.</strong> The bundled QuickLook preview never shows pixel dimensions; this content plugin adds them — plus durations, codecs, and PDF page counts — right in the file listing and tooltips. One adaptive <em>Summary</em> column covers every file type:</p>
+    <div class="cols">IMG_0024.jpg    3.6 M    3024 × 4032
+MVI_0044.avi    3.9 M    640 × 480 · 0:04
+song.m4a        5.1 M    3:45
+report.pdf      820 K    14 pages</div>
+    <ul style="margin-top:16px">
+      <li>Images: dimensions, megapixels, DPI, bit depth (via ImageIO — header read only)</li>
+      <li>Audio/video: duration, bitrate, sample rate, channels, codecs (AVFoundation)</li>
+      <li>AVI: resolution, duration, frame rate (self-contained RIFF parser)</li>
+      <li>PDF: page count. Every field is also available as its own sortable column.</li>
+    </ul>
+  </div>
+
+  <h2>Install</h2>
+  <p>Download the latest <a href="https://github.com/NikolaiSachok/DC-plugins/releases">release bundle</a> (no Xcode needed), unzip, quit Double Commander, then run the installer:</p>
+  <pre><code>./install.sh</code></pre>
+  <p class="muted">Or build from source — see each plugin's README. Double Commander is ad-hoc signed with no library validation, so the ad-hoc-signed plugins load cleanly.</p>
+
+  <h2>Built in the open</h2>
+  <p>This is also a worked example of native macOS plugin development: prove the platform mechanism with a focused test before writing the feature, and fix root causes. The <a href="https://github.com/NikolaiSachok/DC-plugins/wiki">wiki</a> documents the WLX/WDX plugin ABIs and a couple of instructive, host-dependent bugs — why <code>WKWebView</code> swallows the Escape key in a Lazarus/LCL host, and why FP-exception traps in that host turn harmless ImageIO math into a crash.</p>
+</main>
+
+<footer class="wrap">
+  Open source (MIT) · <a href="https://github.com/NikolaiSachok/DC-plugins">github.com/NikolaiSachok/DC-plugins</a><br>
+  Double Commander is a free cross-platform file manager; these are independent third-party plugins for its macOS build.
+</footer>
+</body>
+</html>
