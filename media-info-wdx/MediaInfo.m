@@ -459,12 +459,12 @@ DLLEXPORT int __stdcall ContentGetValue(char *fileName, int field, int unit,
 
         switch (kFields[field].type) {
             case ft_numeric_32:
-                if (maxlen >= (int)sizeof(int32_t))
-                    *(int32_t *)fieldValue = (int32_t)[value intValue];
+                if (maxlen < (int)sizeof(int32_t)) return ft_fieldempty;
+                *(int32_t *)fieldValue = (int32_t)[value intValue];
                 return ft_numeric_32;
             case ft_numeric_floating:
-                if (maxlen >= (int)sizeof(double))
-                    *(double *)fieldValue = [value doubleValue];
+                if (maxlen < (int)sizeof(double)) return ft_fieldempty;
+                *(double *)fieldValue = [value doubleValue];
                 return ft_numeric_floating;
             case ft_string:
                 return WriteString((NSString *)value, fieldValue, maxlen);
