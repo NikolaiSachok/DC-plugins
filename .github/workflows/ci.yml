@@ -43,3 +43,36 @@ jobs:
 
       # The WKWebView render + Esc tests under test/ are GUI-bound and run
       # locally (see markdown-wlx/README.md), not on the headless CI runner.
+
+      - name: Build media-info-wdx
+        working-directory: media-info-wdx
+        run: ./build.sh
+
+      - name: Assert universal binary (arm64 + x86_64)
+        working-directory: media-info-wdx
+        run: |
+          archs=$(lipo -archs build/MediaInfo.wdx)
+          echo "archs: $archs"
+          echo "$archs" | grep -q arm64
+          echo "$archs" | grep -q x86_64
+
+      - name: Assert WDX entry points are exported
+        working-directory: media-info-wdx
+        run: |
+          for sym in _ContentGetSupportedField _ContentGetValue \
+                     _ContentGetSupportedFieldFlags _ContentGetDetectString \
+                     _ContentSetDefaultParams _ContentPluginUnloading; do
+            nm -gU build/MediaInfo.wdx | grep -q " T $sym" \
+              || { echo "missing export: $sym"; exit 1; }
+          done
+          echo "all WDX exports present ✓"
+
+      # Unlike the markdown viewer, the content plugin is not GUI-bound: the
+      # harness synthesizes sample files and drives the real ABI headlessly.
+      - name: Run media-info-wdx harness (real artifact)
+        working-directory: media-info-wdx
+        run: |
+          clang -arch arm64 -fobjc-arc -framework Foundation \
+            -framework CoreGraphics -framework ImageIO \
+            -o build/test_host test/test_host.m
+          ./build/test_host build/MediaInfo.wdx

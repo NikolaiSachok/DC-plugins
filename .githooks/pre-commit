@@ -43,4 +43,25 @@ if printf '%s\n' "$staged" | grep -qE '^markdown-wlx/(MarkdownView\.m|listplug\.
     echo "[pre-commit] markdown-wlx OK (universal, all ABI exports present)"
 fi
 
+# --- media-info-wdx: build + verify universal ABI only if its source changed ---
+if printf '%s\n' "$staged" | grep -qE '^media-info-wdx/(MediaInfo\.m|contplug\.h|build\.sh)$'; then
+    echo "[pre-commit] media-info-wdx source staged -> building"
+    ( cd media-info-wdx && ./build.sh >/dev/null )
+    wdx="media-info-wdx/build/MediaInfo.wdx"
+
+    info=$(file "$wdx")
+    case "$info" in
+        *x86_64*arm64* | *arm64*x86_64*) ;;
+        *) echo "[pre-commit] FAIL: not a universal binary -> $info"; exit 1 ;;
+    esac
+
+    for sym in _ContentGetSupportedField _ContentGetValue \
+               _ContentGetSupportedFieldFlags _ContentGetDetectString \
+               _ContentSetDefaultParams _ContentPluginUnloading; do
+        nm -gU "$wdx" | grep -q " T $sym" \
+            || { echo "[pre-commit] FAIL: missing export $sym"; exit 1; }
+    done
+    echo "[pre-commit] media-info-wdx OK (universal, all ABI exports present)"
+fi
+
 echo "[pre-commit] passed"
