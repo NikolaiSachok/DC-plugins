@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  leak-guard:
+    name: Leak guard (generic secrets/paths)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/leak-guard.sh
+
+  build:
+    name: Build & verify (macOS, universal)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build markdown-wlx
+        working-directory: markdown-wlx
+        run: ./build.sh
+
+      - name: Assert universal binary (arm64 + x86_64)
+        working-directory: markdown-wlx
+        run: |
+          archs=$(lipo -archs build/MarkdownView.wlx)
+          echo "archs: $archs"
+          echo "$archs" | grep -q arm64
+          echo "$archs" | grep -q x86_64
+
+      - name: Assert WLX entry points are exported
+        working-directory: markdown-wlx
+        run: |
+          for sym in _ListLoad _ListLoadNext _ListCloseWindow \
+                     _ListGetDetectString _ListSetDefaultParams; do
+            nm -gU build/MarkdownView.wlx | grep -q " T $sym" \
+              || { echo "missing export: $sym"; exit 1; }
+          done
+          echo "all WLX exports present ✓"
+
+      # The WKWebView render + Esc tests under test/ are GUI-bound and run
+      # locally (see markdown-wlx/README.md), not on the headless CI runner.

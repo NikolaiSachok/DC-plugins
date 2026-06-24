@@ -1,0 +1,23 @@
+# Build output (plugins are built from source — never commit binaries)
+**/build/
+*.o
+*.dylib
+*.wlx
+*.wcx
+*.wdx
+*.wfx
+
+# macOS cruft
+.DS_Store
+.AppleDouble
+._*
+
+# Config backups produced by the installer
+*.bak-*
+doublecmd.xml.bak-*
+
+# Editor / tooling
+*.swp
+*.swo
+.idea/
+.vscode/

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Double Commander documentation
+    url: https://doublecmd.sourceforge.io/mediawiki/index.php/Main_Page
+    about: Upstream docs for Double Commander and its plugin system.
