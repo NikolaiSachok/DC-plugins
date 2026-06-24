@@ -4,6 +4,13 @@ Native plugins for [Double Commander](https://doublecmd.sourceforge.io/) on macO
 built to a consistent engineering standard: **universal binaries** (Apple Silicon +
 Intel), **headless tests**, **CI**, and a layered **safety gate** before anything ships.
 
+So far that means a **Markdown preview/viewer plugin for Double Commander** (renders
+`.md` files in the F3 viewer, with a toggle back to raw text) and a **media-info
+plugin** that shows **image and video resolution, duration, and PDF page count as
+custom columns** — the things people reach for as a "Double Commander Markdown plugin"
+or an "image dimensions column on macOS". Both are WLX/WDX plugins using the Total
+Commander plugin ABI.
+
 This repo is also a worked example of how I build small native tools end-to-end —
 investigate the platform, prove the mechanism with a focused test before writing the
 feature, fix root causes instead of papering over them, and keep the result
