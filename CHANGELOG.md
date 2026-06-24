@@ -6,6 +6,14 @@ independently and tagged below.
 
 ## [Unreleased]
 
+### Fixed
+- **markdown-wlx:** Escape now actually closes the viewer in Double Commander.
+  The 0.2.0 fix forwarded Escape up the responder chain, which works for plain
+  Cocoa but not for DC (a Lazarus/LCL app that handles key shortcuts via
+  `NSApplication`'s `-sendEvent:` dispatch). The plugin now moves focus off the
+  web view and re-posts Escape into the event queue, mirroring the "switch to
+  Text mode, then Esc" workaround.
+
 ## markdown-wlx 0.2.0 — 2026-06-24
 
 ### markdown-wlx

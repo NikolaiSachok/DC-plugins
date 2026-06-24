@@ -1,6 +1,7 @@
 /* End-to-end: load the real .wlx into a parent view that stands in for Double
- * Commander's viewer, focus the plugin's web view, press Esc, and confirm the
- * parent (i.e. DC) receives it -> the viewer would close. */
+ * Commander's viewer, focus the plugin's web view, press Esc through the normal
+ * NSApplication event queue, and confirm the plugin re-routes it to the parent
+ * (i.e. DC) via -sendEvent: dispatch — which is how LCL closes the viewer. */
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
 #include <dlfcn.h>
@@ -13,9 +14,15 @@ static BOOL gDCGotEsc = NO;
 @implementation FakeDC
 - (BOOL)acceptsFirstResponder { return YES; }
 - (void)keyDown:(NSEvent *)e {
-    if (e.keyCode == 53) { gDCGotEsc = YES; NSLog(@"VERIFY: DC parent received Esc -> viewer closes"); }
+    if (e.keyCode == 53) { gDCGotEsc = YES; NSLog(@"VERIFY: DC parent received Esc via event dispatch -> viewer closes"); }
 }
 @end
+
+static NSEvent *EscDown(NSWindow *w) {
+    return [NSEvent keyEventWithType:NSEventTypeKeyDown location:NSZeroPoint
+        modifierFlags:0 timestamp:0 windowNumber:w.windowNumber context:nil
+        characters:@"\x1b" charactersIgnoringModifiers:@"\x1b" isARepeat:NO keyCode:53];
+}
 
 int main(int argc, char **argv){ @autoreleasepool {
     NSApplication *app = [NSApplication sharedApplication];
@@ -35,19 +42,22 @@ int main(int argc, char **argv){ @autoreleasepool {
     [win makeKeyAndOrderFront:nil];
     [win makeFirstResponder:web];
 
+    // Let the page settle, focus the web view, then queue Esc for normal dispatch.
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(2.0*NSEC_PER_SEC)),
       dispatch_get_main_queue(), ^{
-        NSLog(@"VERIFY: firstResponder=%@", win.firstResponder);
-        NSEvent *esc = [NSEvent keyEventWithType:NSEventTypeKeyDown location:NSZeroPoint
-            modifierFlags:0 timestamp:0 windowNumber:win.windowNumber context:nil
-            characters:@"\x1b" charactersIgnoringModifiers:@"\x1b" isARepeat:NO keyCode:53];
-        [win sendEvent:esc];
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.4*NSEC_PER_SEC)),
+        [win makeFirstResponder:web];
+        NSLog(@"VERIFY: firstResponder=%@; posting Esc to NSApp queue", win.firstResponder);
+        [NSApp postEvent:EscDown(win) atStart:NO];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.6*NSEC_PER_SEC)),
           dispatch_get_main_queue(), ^{
             printf(gDCGotEsc ? "RESULT: PASS (Esc reaches DC)\n" : "RESULT: FAIL (Esc swallowed)\n");
-            [app terminate:nil];
+            [app stop:nil];
+            // nudge the run loop so -stop takes effect promptly
+            [NSApp postEvent:[NSEvent otherEventWithType:NSEventTypeApplicationDefined
+                location:NSZeroPoint modifierFlags:0 timestamp:0 windowNumber:0
+                context:nil subtype:0 data1:0 data2:0] atStart:YES];
         });
     });
     [app run];
-    return 0;
+    return gDCGotEsc ? 0 : 1;
 }}

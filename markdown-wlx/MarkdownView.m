@@ -87,19 +87,54 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
 #pragma mark - MDWebView
 
 /* WKWebView swallows the Escape key, so Double Commander's viewer never sees it
- * and won't close on Esc. We forward only Escape up the responder chain
- * (webView -> MDView -> DC's parent view -> viewer window) and leave every other
- * key to normal web handling (scrolling, find, text selection). */
+ * and won't close on Esc.
+ *
+ * Double Commander is a Lazarus/LCL app: it processes key shortcuts (including
+ * Esc -> close viewer) through NSApplication's event dispatch (-sendEvent:),
+ * NOT through synthetic -keyDown: responder forwarding. So just walking the
+ * responder chain is not enough — it reaches DC's window but never re-enters
+ * LCL's key handling.
+ *
+ * The fix mirrors the manual workaround "switch to Text mode, then Esc works":
+ * move keyboard focus off the web view onto DC's own view, then re-post the
+ * Escape event so NSApplication dispatches it normally and LCL closes the
+ * viewer. Every other key is left to normal web handling (scrolling, find,
+ * text selection). */
 @interface MDWebView : WKWebView
 @end
 
 @implementation MDWebView
 - (void)keyDown:(NSEvent *)event {
-    if (event.keyCode == 53 /* kVK_Escape */) {
-        [self.nextResponder keyDown:event];
+    if (event.keyCode != 53 /* kVK_Escape */) {
+        [super keyDown:event];
         return;
     }
-    [super keyDown:event];
+
+    NSWindow *win = self.window;
+    if (!win) return;
+
+    /* The view DC handed us is our container's superview — a control inside the
+     * viewer form. Focus it (or fall back) so the web view stops eating keys. */
+    NSView *dcView = self.superview.superview;
+    BOOL moved = NO;
+    if ([dcView isKindOfClass:[NSView class]]) moved = [win makeFirstResponder:dcView];
+    if (!moved) moved = [win makeFirstResponder:win.contentView];
+    if (!moved) moved = [win makeFirstResponder:nil];
+    if (win.firstResponder == self) return; /* couldn't move focus; avoid a loop */
+
+    /* Re-inject Escape into the normal event queue (fresh copy, not the
+     * in-flight event) so NSApplication -> LCL handles it. */
+    NSEvent *esc = [NSEvent keyEventWithType:NSEventTypeKeyDown
+                                    location:event.locationInWindow
+                               modifierFlags:event.modifierFlags
+                                   timestamp:event.timestamp
+                                windowNumber:event.windowNumber
+                                     context:nil
+                                  characters:@"\x1b"
+                 charactersIgnoringModifiers:@"\x1b"
+                                   isARepeat:NO
+                                     keyCode:53];
+    [NSApp postEvent:esc atStart:YES];
 }
 @end
 
