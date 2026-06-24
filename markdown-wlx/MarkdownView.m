@@ -50,7 +50,7 @@ static NSString *ConfigIniPath(void) {
 static NSDictionary *ReadConfig(void) {
     NSMutableDictionary *cfg = [@{ @"theme": @"auto", @"maxwidth": @"980",
                                    @"fontsize": @"16", @"mermaid": @"1",
-                                   @"math": @"1" } mutableCopy];
+                                   @"math": @"1", @"mathdollar": @"0" } mutableCopy];
     NSString *path = ConfigIniPath();
     NSString *text = path ? [NSString stringWithContentsOfFile:path
                                 encoding:NSUTF8StringEncoding error:NULL] : nil;
@@ -209,8 +209,15 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
     long fontSize = MAX(8,   [cfg[@"fontsize"] integerValue] ?: 16);
     BOOL wantMermaid = CfgBool(cfg, @"mermaid") &&
                        [mdText rangeOfString:@"```mermaid"].location != NSNotFound;
-    BOOL wantMath    = CfgBool(cfg, @"math") &&
-                       [mdText rangeOfString:@"$"].location != NSNotFound;
+    /* Math: prefer unambiguous delimiters ($$, \( \)). Single-$ inline math is
+     * off by default because it mangles prose with dollar amounts ("$5 to $10");
+     * enable it with `mathdollar = 1`. */
+    BOOL allowDollar = CfgBool(cfg, @"mathdollar");
+    BOOL hasMathDelim = [mdText rangeOfString:@"$$"].location  != NSNotFound ||
+                        [mdText rangeOfString:@"\\("].location != NSNotFound ||
+                        [mdText rangeOfString:@"\\["].location != NSNotFound ||
+                        (allowDollar && [mdText rangeOfString:@"$"].location != NSNotFound);
+    BOOL wantMath    = CfgBool(cfg, @"math") && hasMathDelim;
 
     NSString *mdDir = [mdPath stringByDeletingLastPathComponent];
     NSString *baseHref = [[NSURL fileURLWithPath:mdDir isDirectory:YES] absoluteString];
@@ -244,6 +251,7 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
 
     /* ---- libraries ---- */
     [head appendFormat:@"<script src=\"%@\"></script>", AssetURL(@"marked.min.js")];
+    [head appendFormat:@"<script src=\"%@\"></script>", AssetURL(@"dompurify.min.js")];
     [head appendFormat:@"<script src=\"%@\"></script>", AssetURL(@"highlight.min.js")];
     if (wantMermaid) {
         [head appendFormat:@"<script src=\"%@\"></script>", AssetURL(@"mermaid/mermaid.min.js")];
@@ -255,12 +263,15 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
     }
 
     NSString *bootstrap = [NSString stringWithFormat:@""
-        "var __theme=\"%@\";var __scrollY=%ld;"
+        "var __theme=\"%@\";var __scrollY=%ld;var __mathDollar=%d;"
         "window.addEventListener('load',function(){"
         "var b64=document.getElementById('md-data').textContent.trim();"
         "var md=new TextDecoder('utf-8').decode(Uint8Array.from(atob(b64),function(c){return c.charCodeAt(0);}));"
         "try{marked.setOptions({gfm:true,breaks:false});}catch(e){}"
         "var out;try{out=marked.parse(md);}catch(e){out='<pre>'+String(e)+'</pre>';}"
+        /* Markdown is untrusted: sanitize before insertion so raw HTML/JS in the
+         * document (e.g. <img onerror>, <script>) cannot execute. */
+        "if(window.DOMPurify){out=DOMPurify.sanitize(out,{USE_PROFILES:{html:true}});}"
         "var content=document.getElementById('content');content.innerHTML=out;"
         "if(window.mermaid){"
           "content.querySelectorAll('code.language-mermaid').forEach(function(code){"
@@ -270,14 +281,15 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
           "mermaid.initialize({startOnLoad:false,theme:dark?'dark':'default',securityLevel:'strict'});"
           "mermaid.run();}catch(e){}}"
         "try{content.querySelectorAll('pre code:not(.language-mermaid)').forEach(function(el){hljs.highlightElement(el);});}catch(e){}"
-        "if(window.renderMathInElement){try{renderMathInElement(content,{delimiters:["
-          "{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},"
-          "{left:'\\\\(',right:'\\\\)',display:false},{left:'\\\\[',right:'\\\\]',display:true}],"
-          "throwOnError:false});}catch(e){}}"
+        "if(window.renderMathInElement){try{"
+          "var __d=[{left:'$$',right:'$$',display:true},"
+          "{left:'\\\\(',right:'\\\\)',display:false},{left:'\\\\[',right:'\\\\]',display:true}];"
+          "if(__mathDollar)__d.push({left:'$',right:'$',display:false});"
+          "renderMathInElement(content,{delimiters:__d,throwOnError:false});}catch(e){}}"
         "try{if(__scrollY>0)window.scrollTo(0,__scrollY);}catch(e){}"
         "var post=function(){try{window.webkit.messageHandlers.dcmd.postMessage(window.scrollY);}catch(e){}};"
         "var t=null;window.addEventListener('scroll',function(){if(t)return;t=setTimeout(function(){t=null;post();},120);},{passive:true});"
-        "});", theme, savedY];
+        "});", theme, savedY, allowDollar ? 1 : 0];
 
     NSMutableString *html = [NSMutableString string];
     [html appendString:@"<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
@@ -365,6 +377,7 @@ void __stdcall ListCloseWindow(HWND ListWin) {
 
 __attribute__((visibility("default")))
 void __stdcall ListGetDetectString(char *DetectString, int maxlen) {
+    if (!DetectString || maxlen <= 0) return;
     const char *s =
         "EXT=\"MD\"|EXT=\"MARKDOWN\"|EXT=\"MDOWN\"|EXT=\"MKD\"|EXT=\"MKDN\"|"
         "EXT=\"MDWN\"|EXT=\"MDTXT\"|EXT=\"MDTEXT\"|EXT=\"MARKDN\"|EXT=\"RMD\"|EXT=\"QMD\"";

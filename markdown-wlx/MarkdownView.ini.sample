@@ -19,6 +19,9 @@ fontsize = 16
 ; that actually contain a mermaid block.
 mermaid = 1
 
-; Render $inline$ and $$block$$ math with KaTeX (1/0). KaTeX only loads for files
-; that actually contain a '$'.
+; Render math with KaTeX (1/0). Block $$…$$ and \(…\) / \[…\] work by default.
 math = 1
+
+; Also treat single $…$ as inline math (1/0). Off by default because it mangles
+; prose with dollar amounts ("$5 to $10"). Enable only for math-heavy documents.
+mathdollar = 0

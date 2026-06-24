@@ -6,6 +6,25 @@ independently and tagged below.
 
 ## [Unreleased]
 
+## markdown-wlx 0.2.2 — 2026-06-24
+
+Hardening from a code review of the 0.2.x work.
+
+### Security
+- **markdown-wlx:** rendered Markdown is now sanitized with DOMPurify before
+  insertion. Raw HTML/JS in a document (e.g. `<img onerror=…>`, `<script>`) can no
+  longer execute in the viewer's WebView.
+
+### Fixed
+- **markdown-wlx:** inline math no longer mangles prose containing dollar amounts
+  ("$5 to $10"). `$$…$$` and `\(…\)`/`\[…\]` render by default; single-`$` math is
+  opt-in via `mathdollar = 1`.
+- **markdown-wlx:** `ListGetDetectString` guards against a non-positive `maxlen`
+  (avoids a `strncpy` length underflow).
+- **scripts/leak-guard.sh:** the private-key detector never matched — the `--` was
+  consumed as the grep pattern instead of being passed to grep. Now uses `grep -e`,
+  so PEM private keys (and any pattern starting with `-`) are detected.
+
 ## markdown-wlx 0.2.1 — 2026-06-24
 
 ### Fixed

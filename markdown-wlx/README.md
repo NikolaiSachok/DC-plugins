@@ -77,8 +77,12 @@ theme    = auto      ; auto (follow macOS) | light | dark
 maxwidth = 980       ; content column width, px
 fontsize = 16        ; base font size, px
 mermaid  = 1         ; render ```mermaid blocks (1/0)
-math     = 1         ; render $…$ / $$…$$ with KaTeX (1/0)
+math     = 1         ; render $$…$$ and \(…\)/\[…\] with KaTeX (1/0)
+mathdollar = 0       ; also treat single $…$ as math (off — avoids mangling "$5 to $10")
 ```
+
+Markdown is rendered through **DOMPurify**, so raw HTML/JS embedded in a document
+(e.g. `<img onerror=…>`, `<script>`) is stripped and cannot execute in the viewer.
 
 ## Sample documents
 

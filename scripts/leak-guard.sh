@@ -17,7 +17,9 @@ fail=0
 
 scan() { # <regex> <human description>
     local hits
-    hits=$(grep -rInE "$1" . \
+    # -e "$1" so a pattern that starts with '-' (e.g. a PEM header) is treated as
+    # a pattern, not as grep options.
+    hits=$(grep -rInE -e "$1" . \
         --binary-files=without-match \
         --exclude-dir=.git --exclude-dir=build 2>/dev/null \
         | grep -v "$self")
@@ -34,7 +36,7 @@ scan 'github_pat_[A-Za-z0-9_]{20,}'            'GitHub fine-grained PAT'
 scan 'AKIA[0-9A-Z]{16}'                        'AWS access key id'
 scan 'xox[baprs]-[A-Za-z0-9-]{10,}'            'Slack token'
 scan 'sk-[A-Za-z0-9]{20,}'                     'OpenAI-style secret key'
-scan -- '-----BEGIN [A-Z ]*PRIVATE KEY-----'   'Private key block'
+scan '-----BEGIN [A-Z ]*PRIVATE KEY-----'      'Private key block'
 
 if find . -name .DS_Store -not -path './.git/*' | grep -q .; then
     echo "✗ .DS_Store committed"
