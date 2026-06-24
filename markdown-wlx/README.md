@@ -79,7 +79,12 @@ fontsize = 16        ; base font size, px
 mermaid  = 1         ; render ```mermaid blocks (1/0)
 math     = 1         ; render $$…$$ and \(…\)/\[…\] with KaTeX (1/0)
 mathdollar = 0       ; also treat single $…$ as math (off — avoids mangling "$5 to $10")
+showversion = 1      ; faint plugin-version badge in the bottom-right corner (1/0)
 ```
+
+**Seeing the version:** the bottom-right corner shows a faint `MarkdownView vX.Y.Z`
+badge (hover to brighten). Hide it with `showversion = 0`. The version string is
+also embedded in the binary (`strings MarkdownView.wlx | grep MarkdownView`).
 
 Markdown is rendered through **DOMPurify**, so raw HTML/JS embedded in a document
 (e.g. `<img onerror=…>`, `<script>`) is stripped and cannot execute in the viewer.

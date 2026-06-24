@@ -25,3 +25,6 @@ math = 1
 ; Also treat single $…$ as inline math (1/0). Off by default because it mangles
 ; prose with dollar amounts ("$5 to $10"). Enable only for math-heavy documents.
 mathdollar = 0
+
+; Show a faint plugin-version badge in the bottom-right corner (1/0).
+showversion = 1

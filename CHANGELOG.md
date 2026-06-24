@@ -6,6 +6,14 @@ independently and tagged below.
 
 ## [Unreleased]
 
+## markdown-wlx 0.3.0 — 2026-06-24
+
+### Added
+- **markdown-wlx:** a faint version badge (`MarkdownView vX.Y.Z`) in the bottom-right
+  corner of the preview, so you can tell which build is loaded while using it. Hover
+  to brighten; hide with `showversion = 0`. The version is also embedded in the
+  binary (`strings MarkdownView.wlx | grep MarkdownView`).
+
 ## markdown-wlx 0.2.2 — 2026-06-24
 
 Hardening from a code review of the 0.2.x work.

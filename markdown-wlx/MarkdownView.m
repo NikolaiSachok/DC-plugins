@@ -14,6 +14,8 @@
 #include <dlfcn.h>
 #include "listplug.h"
 
+#define MDV_VERSION "0.3.0"   /* single source of truth for the plugin version */
+
 #pragma mark - Helpers
 
 /* Directory that contains this .wlx, so we can find the assets folder beside it. */
@@ -50,7 +52,8 @@ static NSString *ConfigIniPath(void) {
 static NSDictionary *ReadConfig(void) {
     NSMutableDictionary *cfg = [@{ @"theme": @"auto", @"maxwidth": @"980",
                                    @"fontsize": @"16", @"mermaid": @"1",
-                                   @"math": @"1", @"mathdollar": @"0" } mutableCopy];
+                                   @"math": @"1", @"mathdollar": @"0",
+                                   @"showversion": @"1" } mutableCopy];
     NSString *path = ConfigIniPath();
     NSString *text = path ? [NSString stringWithContentsOfFile:path
                                 encoding:NSUTF8StringEncoding error:NULL] : nil;
@@ -218,6 +221,7 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
                         [mdText rangeOfString:@"\\["].location != NSNotFound ||
                         (allowDollar && [mdText rangeOfString:@"$"].location != NSNotFound);
     BOOL wantMath    = CfgBool(cfg, @"math") && hasMathDelim;
+    BOOL showVersion = CfgBool(cfg, @"showversion");
 
     NSString *mdDir = [mdPath stringByDeletingLastPathComponent];
     NSString *baseHref = [[NSURL fileURLWithPath:mdDir isDirectory:YES] absoluteString];
@@ -248,6 +252,11 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
                        @"@media(max-width:767px){.markdown-body{padding:18px;}}"
                        @".mermaid{display:flex;justify-content:center;margin:16px 0;}</style>",
                        maxWidth, fontSize];
+    [head appendString:@"<style>#mdv-ver{position:fixed;right:8px;bottom:6px;z-index:99;"
+                       @"font:11px/1.4 -apple-system,BlinkMacSystemFont,sans-serif;"
+                       @"color:#8b949e;background:rgba(127,127,127,.12);padding:2px 8px;"
+                       @"border-radius:10px;opacity:.35;user-select:none;transition:opacity .15s;}"
+                       @"#mdv-ver:hover{opacity:.95;}</style>"];
 
     /* ---- libraries ---- */
     [head appendFormat:@"<script src=\"%@\"></script>", AssetURL(@"marked.min.js")];
@@ -297,6 +306,9 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
     [html appendFormat:@"<base href=\"%@\"><title>%@</title>", baseHref, title];
     [html appendString:head];
     [html appendString:@"</head><body><article class=\"markdown-body\" id=\"content\"></article>"];
+    if (showVersion) {
+        [html appendFormat:@"<div id=\"mdv-ver\" title=\"Double Commander MarkdownView plugin\">MarkdownView v%s</div>", MDV_VERSION];
+    }
     [html appendFormat:@"<script id=\"md-data\" type=\"application/x-markdown-base64\">%@</script>", b64];
     [html appendFormat:@"<script>%@</script>", bootstrap];
     [html appendString:@"</body></html>"];
