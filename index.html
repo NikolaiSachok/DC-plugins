@@ -86,7 +86,7 @@
 
   <p>Two small, fast, native plugins that fill real gaps in <a href="https://doublecmd.sourceforge.io/">Double Commander</a> on macOS. Each is a universal binary (Apple Silicon + Intel), built with no third-party libraries and no network access, and tested against the real built artifact. They use the Total Commander plugin ABI, so they load straight into Double Commander.</p>
 
-  <h2>MarkdownView <span class="tag">WLX · lister</span></h2>
+  <h2 id="markdownview">MarkdownView <span class="tag">WLX · lister</span></h2>
   <div class="card">
     <p><strong>A Markdown preview/viewer plugin for Double Commander on macOS.</strong> Select any <code>.md</code> file and press <strong>F3</strong> — it opens beautifully rendered instead of as raw text (as shown above), and you can switch back to plain text any time.</p>
     <ul>
@@ -97,7 +97,7 @@
     </ul>
   </div>
 
-  <h2>MediaInfo <span class="tag">WDX · content</span></h2>
+  <h2 id="mediainfo">MediaInfo <span class="tag">WDX · content</span></h2>
   <div class="card">
     <p><strong>See image and video resolution (and more) in a Double Commander column.</strong> The bundled QuickLook preview never shows pixel dimensions; this content plugin adds them — plus durations, codecs, and PDF page counts — right in the file listing and tooltips. One adaptive <em>Summary</em> column covers every file type:</p>
     <div class="cols">IMG_0024.jpg    3.6 M    3024 × 4032
@@ -118,7 +118,11 @@ report.pdf      820 K    14 pages</div>
   <p class="muted">Or build from source — see each plugin's README. Double Commander is ad-hoc signed with no library validation, so the ad-hoc-signed plugins load cleanly.</p>
 
   <h2>Built in the open</h2>
-  <p>This is also a worked example of native macOS plugin development: prove the platform mechanism with a focused test before writing the feature, and fix root causes. The <a href="https://github.com/NikolaiSachok/DC-plugins/wiki">wiki</a> documents the WLX/WDX plugin ABIs and a couple of instructive, host-dependent bugs — why <code>WKWebView</code> swallows the Escape key in a Lazarus/LCL host, and why FP-exception traps in that host turn harmless ImageIO math into a crash.</p>
+  <p>This is also a worked example of native macOS plugin development: prove the platform mechanism with a focused test before writing the feature, and fix root causes. The <a href="https://github.com/NikolaiSachok/DC-plugins/wiki">wiki</a> documents the WLX/WDX plugin ABIs, and these write-ups dig into two instructive, host-dependent bugs:</p>
+  <ul>
+    <li><a href="articles/double-commander-wkwebview-escape-key.html">Why <code>WKWebView</code> swallows the Escape key in Double Commander</a> — and the fix (a Lazarus/LCL host dispatches shortcuts via <code>NSApplication -sendEvent:</code>).</li>
+    <li><a href="articles/double-commander-plugin-floating-point-exception-crash.html">Floating-point exception traps crash native plugins in Double Commander</a> — why ImageIO math is fatal under Free Pascal's FP-exception traps, and how to mask it.</li>
+  </ul>
 </main>
 
 <footer class="wrap">

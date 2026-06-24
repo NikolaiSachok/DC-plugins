@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why WKWebView swallows the Escape key in Double Commander — and the fix</title>
+<meta name="description" content="A debugging case study: a WKWebView-based lister plugin for Double Commander on macOS wouldn't close on Escape. The root cause is that Double Commander is a Lazarus/LCL app that dispatches shortcuts through NSApplication's -sendEvent:, not synthetic -keyDown: forwarding.">
+<link rel="canonical" href="https://nikolaisachok.github.io/DC-plugins/articles/double-commander-wkwebview-escape-key.html">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Why WKWebView swallows the Escape key in Double Commander — and the fix">
+<meta property="og:description" content="Root-causing a host-dependent macOS bug: WKWebView swallows Escape because Double Commander (Lazarus/LCL) dispatches key shortcuts via NSApplication -sendEvent:, not -keyDown: forwarding.">
+<meta property="og:url" content="https://nikolaisachok.github.io/DC-plugins/articles/double-commander-wkwebview-escape-key.html">
+<meta name="twitter:card" content="summary">
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org","@type":"TechArticle",
+  "headline":"Why WKWebView swallows the Escape key in Double Commander — and the fix",
+  "description":"Root-causing a host-dependent macOS bug where a WKWebView lister plugin wouldn't close on Escape, because Double Commander dispatches shortcuts via NSApplication -sendEvent:.",
+  "author":{"@type":"Person","name":"Nikolai Sachok"},
+  "mainEntityOfPage":"https://nikolaisachok.github.io/DC-plugins/articles/double-commander-wkwebview-escape-key.html",
+  "keywords":"Double Commander, WKWebView, Escape key, Lazarus, LCL, macOS, WLX plugin, NSApplication sendEvent"
+}
+</script>
+</head>
+<body>
+<div class="wrap">
+  <nav class="nav"><a href="../">← Double Commander plugins for macOS</a></nav>
+
+  <article>
+    <h1>Why WKWebView swallows the Escape key in Double Commander — and the fix</h1>
+    <p class="meta">A debugging case study from the <a href="https://github.com/NikolaiSachok/DC-plugins">DC-plugins</a> project · macOS · WLX lister plugin</p>
+
+    <p>The <a href="../#markdownview">MarkdownView</a> lister plugin renders Markdown inside Double Commander's F3 viewer using a <code>WKWebView</code>. It worked — except <strong>Escape wouldn't close the viewer</strong>. Curiously, if you first switched the viewer to plain-text mode (press <code>1</code>) and <em>then</em> pressed Escape, it closed fine. That asymmetry was the whole clue.</p>
+
+    <h2>The symptom</h2>
+    <p>Double Commander's viewer is supposed to close on Escape. With the rendered (WebView) mode active, Escape did nothing; in text mode it worked. So the web view was <strong>consuming</strong> the key before Double Commander could act on it.</p>
+
+    <h2>The wrong fix (that passed a test)</h2>
+    <p>The obvious first attempt: subclass <code>WKWebView</code> and forward Escape up the responder chain in <code>keyDown:</code>.</p>
+    <pre><code>// First attempt — WRONG for this host
+- (void)keyDown:(NSEvent *)event {
+    if (event.keyCode == 53 /* Escape */) { [self.nextResponder keyDown:event]; return; }
+    [super keyDown:event];
+}</code></pre>
+    <p>A headless harness that synthesized a <code>keyDown:</code> and checked it reached the parent view <strong>passed</strong>. In the real application it still failed. That gap — green test, broken app — is the lesson of the whole exercise:</p>
+    <blockquote>A passing test against a mock can hide a wrong mental model. If behavior depends on the host, you have to verify it <em>in the host</em>.</blockquote>
+
+    <h2>The root cause</h2>
+    <p>Double Commander is a <strong>Lazarus / LCL</strong> application (Free Pascal's UI toolkit). On macOS, LCL does not rely on the normal Cocoa responder-chain <code>keyDown:</code> traversal for its keyboard shortcuts. Instead it intercepts events centrally in <strong><code>NSApplication</code>'s <code>-sendEvent:</code></strong> and routes them to its own shortcut handling.</p>
+    <p>That explains everything:</p>
+    <ul>
+      <li>A <code>WKWebView</code> that has first-responder focus consumes the Escape key as part of its own event handling, so it never bubbles to LCL's dispatcher.</li>
+      <li>Forwarding via <code>keyDown:</code> up the Cocoa responder chain is the wrong channel — LCL isn't listening there; it's listening at <code>-sendEvent:</code>.</li>
+      <li>Switching to text mode removes the web view from focus, so the next Escape reaches LCL normally — exactly the manual workaround users found.</li>
+    </ul>
+
+    <h2>The fix</h2>
+    <p>Mirror the workaround in code: when the web view sees Escape, <strong>move focus off the web view</strong> and <strong>re-post the Escape event into the application's event queue</strong>, so it goes through <code>NSApplication -sendEvent:</code> the way LCL expects.</p>
+    <pre><code>@interface MDWebView : WKWebView @end
+@implementation MDWebView
+- (void)keyDown:(NSEvent *)event {
+    if (event.keyCode != 53 /* kVK_Escape */) { [super keyDown:event]; return; }
+
+    NSWindow *win = self.window;
+    if (!win) return;
+
+    // 1) Take focus away from the web view so it stops swallowing the key.
+    NSView *host = self.superview.superview;          // Double Commander's viewer view
+    BOOL moved = [host isKindOfClass:[NSView class]] && [win makeFirstResponder:host];
+    if (!moved) moved = [win makeFirstResponder:win.contentView];
+    if (!moved) moved = [win makeFirstResponder:nil];
+    if (win.firstResponder == self) return;           // refused to give up focus; bail
+
+    // 2) Re-inject Escape so it flows through NSApplication -sendEvent: (LCL's path).
+    NSEvent *esc = [NSEvent keyEventWithType:NSEventTypeKeyDown location:NSZeroPoint
+        modifierFlags:0 timestamp:event.timestamp windowNumber:win.windowNumber
+        context:nil characters:@"\x1b" charactersIgnoringModifiers:@"\x1b"
+        isARepeat:NO keyCode:53];
+    [NSApp postEvent:esc atStart:YES];
+}
+@end</code></pre>
+    <p>Now the first Escape closes the viewer, just like the bundled behavior — verified in the real application, not a mock.</p>
+
+    <h2>Takeaways</h2>
+    <ul>
+      <li><strong>Identify the host's event model before patching.</strong> A Lazarus/LCL host dispatches shortcuts at <code>NSApplication -sendEvent:</code>, not via responder-chain <code>keyDown:</code>.</li>
+      <li><strong>Re-inject, don't forward.</strong> <code>[NSApp postEvent:atStart:]</code> puts the key back on the path the host actually monitors.</li>
+      <li><strong>Test the artifact in the host.</strong> The mock passed; the app didn't. Host-dependent behavior needs host-level verification.</li>
+    </ul>
+
+    <p>
+      <a class="cta primary" href="https://github.com/NikolaiSachok/DC-plugins">Source on GitHub</a>
+      <a class="cta" href="https://github.com/NikolaiSachok/DC-plugins/wiki">Project wiki</a>
+      <a class="cta" href="../">The plugins</a>
+    </p>
+
+    <div class="related">
+      <h2>Related</h2>
+      <p><a href="double-commander-plugin-floating-point-exception-crash.html">Floating-point exception traps crash native plugins in Double Commander</a> — another host-dependent macOS bug from the same project.</p>
+    </div>
+  </article>
+
+  <footer>Part of <a href="../">Double Commander plugins for macOS</a> · Open source (MIT) · <a href="https://github.com/NikolaiSachok/DC-plugins">github.com/NikolaiSachok/DC-plugins</a></footer>
+</div>
+</body>
+</html>

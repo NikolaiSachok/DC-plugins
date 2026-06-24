@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Floating-point exception traps crash native plugins in Double Commander</title>
+<meta name="description" content="A debugging case study: a macOS content plugin crashed Double Commander with an Access Violation while reading image metadata. The root cause is that Double Commander's Free Pascal (FPC) runtime enables floating-point exception traps that turn harmless ImageIO math fatal. The fix masks FP exceptions around framework calls.">
+<link rel="canonical" href="https://nikolaisachok.github.io/DC-plugins/articles/double-commander-plugin-floating-point-exception-crash.html">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Floating-point exception traps crash native plugins in Double Commander">
+<meta property="og:description" content="Why a macOS plugin crashes only inside Double Commander: the Lazarus/FPC runtime enables FP-exception traps that make harmless ImageIO floating-point math fatal. Root-caused deterministically; fixed by masking FP exceptions around framework calls.">
+<meta property="og:url" content="https://nikolaisachok.github.io/DC-plugins/articles/double-commander-plugin-floating-point-exception-crash.html">
+<meta name="twitter:card" content="summary">
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org","@type":"TechArticle",
+  "headline":"Floating-point exception traps crash native plugins in Double Commander",
+  "description":"A macOS content plugin crashed Double Commander with an Access Violation while reading image metadata; the cause is FPC's enabled floating-point exception traps, fixed by masking FP exceptions around framework calls.",
+  "author":{"@type":"Person","name":"Nikolai Sachok"},
+  "mainEntityOfPage":"https://nikolaisachok.github.io/DC-plugins/articles/double-commander-plugin-floating-point-exception-crash.html",
+  "keywords":"Double Commander, Free Pascal, FPC, floating-point exception, SIGFPE, Access Violation, ImageIO, macOS, WDX plugin, fenv"
+}
+</script>
+</head>
+<body>
+<div class="wrap">
+  <nav class="nav"><a href="../">← Double Commander plugins for macOS</a></nav>
+
+  <article>
+    <h1>Floating-point exception traps crash native plugins in Double Commander</h1>
+    <p class="meta">A debugging case study from the <a href="https://github.com/NikolaiSachok/DC-plugins">DC-plugins</a> project · macOS · WDX content plugin</p>
+
+    <p>The <a href="../#mediainfo">MediaInfo</a> content plugin shows image and video dimensions in a Double Commander column. It worked in tests — then crashed Double Commander with an <strong>"Access violation"</strong> dialog the instant a folder of old camera JPEGs scrolled into view. The same code reading the same files in a standalone process never crashed. That "only inside the host" signature is the whole story.</p>
+
+    <h2>The symptom</h2>
+    <p>Browsing a directory of ~340 Canon JPEGs, Double Commander threw an unhandled <code>EAccessViolation</code>. The stack trace pointed entirely into Apple system libraries:</p>
+    <pre><code>Unhandled exception: EAccessViolation: Access violation
+  $...  in /usr/lib/system/libsystem_m.dylib
+  $...  in /System/Library/CoreServices/RawCamera.bundle/.../RawCamera
+  $...  in /System/Library/CoreServices/RawCamera.bundle/.../RawCamera
+  ...
+  $...  in /System/Library/Frameworks/ImageIO.framework/.../ImageIO</code></pre>
+    <p>So: <strong>ImageIO</strong>, while copying image properties (it parses EXIF MakerNotes), routed into Apple's <strong>RawCamera</strong> decoder, which did some math in <code>libsystem_m</code> — and that faulted. But only inside Double Commander.</p>
+
+    <h2>Isolating it</h2>
+    <p>Running the exact same <code>CGImageSourceCopyPropertiesAtIndex</code> over every one of those files in a small standalone tool: <strong>zero crashes</strong>. The files weren't corrupt. The crash needed something the host was doing.</p>
+
+    <h2>The root cause: FPC enables FP-exception traps</h2>
+    <p>Double Commander is built with <strong>Free Pascal (FPC)</strong>, whose runtime <strong>enables floating-point exception traps</strong> (invalid operation, divide-by-zero, overflow). In a normal C/Cocoa process those exceptions are <em>masked</em> — operations that produce NaN or infinity just flow through silently. Apple's frameworks are written assuming that masked default. RawCamera's MakerNote math hits one of those normally-harmless conditions; under FPC's unmasked environment it raises a hardware trap, which the FPC runtime reports as an access violation.</p>
+    <p>This is why the standalone tool was fine (traps masked) and the host crashed (traps enabled). It can be reproduced deterministically by toggling the FPU control register the way FPC does. On arm64 that's <code>FPCR</code> bits 8–10:</p>
+    <pre><code>uint64_t fpcr;
+__asm__ volatile("mrs %0, fpcr" : "=r"(fpcr));
+fpcr |= (1u&lt;&lt;8) | (1u&lt;&lt;9) | (1u&lt;&lt;10);   // IOE | DZE | OFE (trap on invalid/div0/overflow)
+__asm__ volatile("msr fpcr, %0" :: "r"(fpcr));</code></pre>
+    <table>
+      <thead><tr><th>Condition</th><th>Result over the 339 JPEGs</th></tr></thead>
+      <tbody>
+        <tr><td>Normal process (traps masked)</td><td>reads all fine</td></tr>
+        <tr><td>FP traps <strong>enabled</strong> (like FPC / Double Commander)</td><td><strong>crashes with a signal</strong></td></tr>
+        <tr><td>Traps enabled, but masked around the ImageIO call</td><td>reads all fine</td></tr>
+      </tbody>
+    </table>
+
+    <h2>The fix</h2>
+    <p>Save the host's floating-point environment, switch to the default (masked) environment for the duration of the framework call, then restore exactly what the host had. <code>&lt;fenv.h&gt;</code> makes this portable across arm64 and x86_64:</p>
+    <pre><code>#import &lt;fenv.h&gt;
+
+fenv_t hostEnv;
+fegetenv(&amp;hostEnv);          // remember the host's FP environment (traps enabled)
+fesetenv(FE_DFL_ENV);        // mask FP exceptions for the framework call
+@try {
+    info = ParseImage(url);  // ImageIO / AVFoundation / CGPDF run here, safely
+} @finally {
+    fesetenv(&amp;hostEnv);      // restore the host's environment exactly as found
+}</code></pre>
+    <p>The <code>@try/@finally</code> guarantees the host environment is restored even if parsing throws. With this in place, the plugin reads the entire problem folder — and any RAW or camera-JPEG folder — without crashing the host.</p>
+
+    <div class="callout"><strong>Why restore, not just mask?</strong> The plugin is a guest in the host's process. Leaving FP exceptions masked after returning would silently change the host's numeric behavior. Saving and restoring the captured environment keeps the change scoped to exactly the framework call.</div>
+
+    <h2>Takeaways</h2>
+    <ul>
+      <li><strong>The FP environment is part of the host contract.</strong> A Free Pascal host enables exception traps that most native code assumes are masked.</li>
+      <li><strong>Mask around system-framework calls and restore.</strong> <code>fegetenv</code> / <code>fesetenv(FE_DFL_ENV)</code> / restore is the portable pattern.</li>
+      <li><strong>Reproduce the host condition deterministically.</strong> Toggling <code>FPCR</code> turned an intermittent "only in the app" crash into a one-line, repeatable test.</li>
+    </ul>
+
+    <p>
+      <a class="cta primary" href="https://github.com/NikolaiSachok/DC-plugins">Source on GitHub</a>
+      <a class="cta" href="https://github.com/NikolaiSachok/DC-plugins/wiki">Project wiki</a>
+      <a class="cta" href="../">The plugins</a>
+    </p>
+
+    <div class="related">
+      <h2>Related</h2>
+      <p><a href="double-commander-wkwebview-escape-key.html">Why WKWebView swallows the Escape key in Double Commander</a> — another host-dependent macOS bug from the same project.</p>
+    </div>
+  </article>
+
+  <footer>Part of <a href="../">Double Commander plugins for macOS</a> · Open source (MIT) · <a href="https://github.com/NikolaiSachok/DC-plugins">github.com/NikolaiSachok/DC-plugins</a></footer>
+</div>
+</body>
+</html>
