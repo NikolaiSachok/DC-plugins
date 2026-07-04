@@ -6,6 +6,16 @@ independently and tagged below.
 
 ## [Unreleased]
 
+## media-info-wdx 0.2.0 — 2026-07-04
+
+### Added
+- **media-info-wdx:** **Matroska / WebM support** (`.mkv`, `.webm`). macOS system
+  frameworks can't open these EBML containers, so a self-contained EBML parser
+  reads dimensions, duration, and frame rate directly from the file head —
+  mirroring the existing AVI RIFF reader, with no dependency and no network. Both
+  extensions are added to the category table and the DetectString, and routed to
+  the fast (non-deferred) parse path.
+
 ## media-info-wdx 0.1.0 — 2026-06-24
 
 ### Added

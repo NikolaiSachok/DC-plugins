@@ -17,6 +17,7 @@ network**:
 | **Audio** (mp3, m4a, aac, wav, aiff, caf) | Duration, Bitrate, Sample rate, Channels, Audio codec | **AVFoundation** |
 | **Video** (mp4, mov, m4v, 3gp) | Dimensions, Duration, Frame rate, Bitrate, Video/Audio codec | **AVFoundation** |
 | **Video** (avi) | Dimensions, Duration, Frame rate | self-contained **RIFF `avih`** reader (AVFoundation can't open AVI on macOS) |
+| **Video** (mkv, webm) | Dimensions, Duration, Frame rate | self-contained **EBML** reader (AVFoundation can't open Matroska on macOS) |
 | **PDF** | Page count | **CoreGraphics (CGPDF)** |
 
 ## The `Summary` field
@@ -107,20 +108,20 @@ which build is loaded (it's also embedded in the binary:
 
 ## Supported extensions
 
-Only formats a system framework can actually read (so a column is never silently
-blank for a "supported" type):
+Only formats that either a system framework or a built-in parser can actually read
+(so a column is never silently blank for a "supported" type):
 
 ```
 images: jpg jpeg png gif tiff tif bmp webp heic heif avif ico icns psd jp2
         dng cr2 cr3 nef arw orf rw2 raf sr2 pef
 audio:  mp3 m4a aac wav aiff aif aifc caf
-video:  mp4 mov m4v 3gp 3g2 avi
+video:  mp4 mov m4v 3gp 3g2 avi mkv webm
 pdf:    pdf
 ```
 
-`.avi` is read by a built-in RIFF parser. Other containers neither AVFoundation nor
-that parser handle (e.g. `.mkv`, `.webm`, `.flv`) are intentionally left out rather
-than shown as empty.
+`.avi` is read by a built-in RIFF parser and `.mkv` / `.webm` by a built-in EBML
+parser (AVFoundation opens neither on macOS). Other containers no framework or
+parser handles (e.g. `.flv`) are intentionally left out rather than shown as empty.
 
 ## Uninstall
 

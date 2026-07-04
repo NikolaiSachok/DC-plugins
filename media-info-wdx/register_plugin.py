@@ -18,7 +18,7 @@ DETECT = "|".join('(EXT="%s")' % e for e in [
     "AVIF", "ICO", "ICNS", "PSD", "JP2", "DNG", "CR2", "CR3", "NEF", "ARW",
     "ORF", "RW2", "RAF", "SR2", "PEF",
     "MP3", "M4A", "AAC", "WAV", "AIFF", "AIF", "AIFC", "CAF",
-    "MP4", "MOV", "M4V", "3GP", "3G2", "AVI",
+    "MP4", "MOV", "M4V", "3GP", "3G2", "AVI", "MKV", "WEBM",
     "PDF",
 ])
 

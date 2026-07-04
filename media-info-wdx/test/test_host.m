@@ -133,6 +133,60 @@ static NSString *makeWAV(NSString *dir) {
     return path;
 }
 
+/* EBML helpers: element = ID (bytes as-is) + size VINT + data. We keep sizes
+   small enough that a single-byte size VINT (0x80 | len) always suffices. */
+static void ebmlEl(NSMutableData *out, const uint8_t *id, int idn, NSData *body) {
+    [out appendBytes:id length:idn];
+    uint8_t sz = (uint8_t)(0x80 | (uint8_t)body.length);   /* len < 128 here */
+    [out appendBytes:&sz length:1];
+    [out appendData:body];
+}
+static NSData *ebmlUInt(uint64_t v) {
+    uint8_t b[8]; int n = 0; uint64_t t = v;
+    do { b[n++] = 0; t >>= 8; } while (t);          /* count bytes */
+    NSMutableData *d = [NSMutableData dataWithLength:n];
+    uint8_t *p = d.mutableBytes;
+    for (int i = n - 1; i >= 0; i--) { p[i] = (uint8_t)(v & 0xFF); v >>= 8; }
+    return d;
+}
+static NSData *ebmlF64(double v) {
+    uint64_t u; memcpy(&u, &v, 8);
+    uint8_t b[8]; for (int i = 0; i < 8; i++) b[i] = (uint8_t)(u >> (56 - 8 * i));
+    return [NSData dataWithBytes:b length:8];
+}
+
+static NSString *makeMKV(NSString *dir) {
+    /* Minimal Matroska: 1920x1080 video track, 3.2s (TimecodeScale 1e6 ns,
+       Duration 3200 units), no clusters — exercises the EBML head parser. */
+    NSMutableData *file = [NSMutableData data];
+    const uint8_t EBMLHDR[4] = {0x1A,0x45,0xDF,0xA3};
+    ebmlEl(file, EBMLHDR, 4, [NSData data]);        /* empty EBML header */
+
+    /* Info */
+    NSMutableData *info = [NSMutableData data];
+    { const uint8_t id[3] = {0x2A,0xD7,0xB1}; ebmlEl(info, id, 3, ebmlUInt(1000000)); } /* TimecodeScale */
+    { const uint8_t id[2] = {0x44,0x89};      ebmlEl(info, id, 2, ebmlF64(3200.0));   } /* Duration     */
+
+    /* Tracks > TrackEntry > Video(PixelWidth/Height) + TrackType=1 */
+    NSMutableData *video = [NSMutableData data];
+    { const uint8_t id[1] = {0xB0}; ebmlEl(video, id, 1, ebmlUInt(1920)); }
+    { const uint8_t id[1] = {0xBA}; ebmlEl(video, id, 1, ebmlUInt(1080)); }
+    NSMutableData *track = [NSMutableData data];
+    { const uint8_t id[1] = {0x83}; ebmlEl(track, id, 1, ebmlUInt(1)); }              /* TrackType video */
+    { const uint8_t id[1] = {0xE0}; ebmlEl(track, id, 1, video); }
+    NSMutableData *tracks = [NSMutableData data];
+    { const uint8_t id[1] = {0xAE}; ebmlEl(tracks, id, 1, track); }
+
+    NSMutableData *seg = [NSMutableData data];
+    { const uint8_t id[4] = {0x15,0x49,0xA9,0x66}; ebmlEl(seg, id, 4, info);   }
+    { const uint8_t id[4] = {0x16,0x54,0xAE,0x6B}; ebmlEl(seg, id, 4, tracks); }
+    { const uint8_t id[4] = {0x18,0x53,0x80,0x67}; ebmlEl(file, id, 4, seg);   }
+
+    NSString *path = [dir stringByAppendingPathComponent:@"sample.mkv"];
+    [file writeToFile:path atomically:YES];
+    return path;
+}
+
 int main(int argc, char **argv) {
     @autoreleasepool {
         if (argc < 2) { fprintf(stderr, "usage: test_host <MediaInfo.wdx>\n"); return 2; }
@@ -201,6 +255,16 @@ int main(int argc, char **argv) {
         check(fabs(getFloat(avi, @"Frame rate") - 25.0) < 0.01, @"AVI Frame rate = 25");
         check([getStr(avi, @"Summary") isEqualToString:@"320 × 240 · 0:02"],
               ([NSString stringWithFormat:@"AVI Summary = '%@'", getStr(avi, @"Summary")]));
+
+        /* ---- video: MKV/WebM via our own EBML parser ---- */
+        const char *mkv = makeMKV(dir).fileSystemRepresentation;
+        check(getInt(mkv, @"Width") == 1920,  @"MKV Width = 1920");
+        check(getInt(mkv, @"Height") == 1080, @"MKV Height = 1080");
+        check(fabs(getFloat(mkv, @"Duration (s)") - 3.2) < 0.05,
+              ([NSString stringWithFormat:@"MKV Duration (s) = %.2f (want 3.2)",
+                getFloat(mkv, @"Duration (s)")]));
+        check([getStr(mkv, @"Summary") isEqualToString:@"1920 × 1080 · 0:03"],
+              ([NSString stringWithFormat:@"MKV Summary = '%@'", getStr(mkv, @"Summary")]));
 
         /* ---- regression: survive DC's FP-exception traps (the RawCamera crash) ----
            Double Commander (Lazarus/FPC) enables FP-exception traps; Apple media
