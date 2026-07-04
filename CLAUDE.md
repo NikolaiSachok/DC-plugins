@@ -40,11 +40,13 @@ Per change, in order:
 ### Scope discipline — capture new/deferred work as issues
 When a request surfaces work beyond the change in hand — a new plugin idea, a deferred
 format/codec, a follow-up hardening, or a good idea you won't build now — **file it as a
-GitHub issue instead of silently expanding scope or letting it drop.** New-plugin ideas
-go on the roadmap (**#7**) as a proposal comment; a plugin-scoped enhancement gets its
-own `enhancement`-labelled issue. Capture the rationale and any options considered, not
-just a title. This keeps each PR focused, preserves the idea, and keeps the history
-honest. (Examples: AVI codec → #12; Matroska playback lister → roadmap #7.)
+GitHub issue instead of silently expanding scope or letting it drop.** Every candidate
+gets its **own** issue (a new plugin → `new-plugin`; a plugin-scoped enhancement →
+`enhancement`), so it can be labelled, discussed, referenced from a PR (`Closes #N`), and
+closed on ship or dismissal. Capture the rationale and any options considered, not just a
+title. The roadmap (**#7**) is only an **index** that links these issues — never a
+container for proposals. This keeps each PR focused, preserves the idea, and keeps the
+history honest. (Examples: AVI codec → #12; Matroska playback lister → #14.)
 
 ## Repo invariants
 - **Public + leak-clean by construction.** Genericize anything domain-revealing.
