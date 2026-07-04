@@ -124,7 +124,6 @@ static const char *kDetectString =
 /* ---- Parsed-info value object + cache ----------------------------------- */
 
 @interface MIInfo : NSObject
-@property (nonatomic) MICategory category;
 @property (nonatomic, strong) NSDictionary<NSNumber *, id> *values; /* field -> NSNumber|NSString */
 @end
 @implementation MIInfo
@@ -203,7 +202,6 @@ static MIInfo *ParseImage(NSURL *url) {
     if (depth && depth.intValue > 0) v[@(F_COLORDEPTH)] = @(depth.intValue);
 
     MIInfo *info = [MIInfo new];
-    info.category = CAT_IMAGE;
     info.values = v;
     return info;
 }
@@ -220,7 +218,6 @@ static MIInfo *ParsePDF(NSURL *url) {
     v[@(F_SUMMARY)]   = (n == 1) ? @"1 page"
                                  : [NSString stringWithFormat:@"%zu pages", n];
     MIInfo *info = [MIInfo new];
-    info.category = CAT_PDF;
     info.values = v;
     return info;
 }
@@ -286,7 +283,6 @@ static MIInfo *ParseAVI(NSURL *url) {
 
     if (v.count == 0) return nil;
     MIInfo *info = [MIInfo new];
-    info.category = CAT_VIDEO;
     info.values = v;
     return info;
 }
@@ -302,35 +298,47 @@ static MIInfo *ParseAVI(NSURL *url) {
    EBML basics: every element is an ID (variable 1-4 bytes, marker bits kept) then
    a size VINT (1-8 bytes, marker stripped) then data. */
 
+/* Decode one EBML element header (ID + size VINT) from [buf, buf+len). On success
+   sets id, the header length in bytes, the declared data size, and whether the
+   size is the EBML "unknown" sentinel; returns 1. Returns 0 if truncated/invalid.
+   Shared by the in-memory walker (MKVNext) and the file-seeking reader. */
+static int MKVDecodeHeader(const uint8_t *buf, size_t len, uint32_t *id,
+                           int *hdrLen, uint64_t *size, int *unknown) {
+    if (len < 2) return 0;
+    uint8_t f = buf[0];
+    int idn = (f & 0x80) ? 1 : (f & 0x40) ? 2 : (f & 0x20) ? 3 : (f & 0x10) ? 4 : 0;
+    if (idn == 0 || (size_t)idn >= len) return 0;
+    uint32_t eid = 0;
+    for (int i = 0; i < idn; i++) eid = (eid << 8) | buf[i];
+
+    const uint8_t *q = buf + idn;
+    uint8_t sb = q[0];
+    int sn = 0; uint8_t smask = 0;
+    for (int b = 0; b < 8; b++) {
+        if (sb & (0x80 >> b)) { sn = b + 1; smask = (uint8_t)(0xFF >> (b + 1)); break; }
+    }
+    if (sn == 0 || (size_t)(idn + sn) > len) return 0;
+    uint64_t sz = (uint64_t)(sb & smask);
+    int allOnes = ((sb & smask) == smask);
+    for (int i = 1; i < sn; i++) { sz = (sz << 8) | q[i]; if (q[i] != 0xFF) allOnes = 0; }
+
+    *id = eid; *hdrLen = idn + sn; *size = sz; if (unknown) *unknown = allOnes;
+    return 1;
+}
+
 /* Read one element at *pp within [*pp, end). On success sets id/data ptr/data
    len and advances *pp past the element; returns 1. Returns 0 to stop. */
 static int MKVNext(const uint8_t **pp, const uint8_t *end,
                    uint32_t *id, const uint8_t **dp, uint64_t *dlen) {
     const uint8_t *p = *pp;
     if (p >= end) return 0;
+    int hdr; uint64_t size; int unk;
+    if (!MKVDecodeHeader(p, (size_t)(end - p), id, &hdr, &size, &unk)) return 0;
 
-    uint8_t f = p[0];
-    int idn = (f & 0x80) ? 1 : (f & 0x40) ? 2 : (f & 0x20) ? 3 : (f & 0x10) ? 4 : 0;
-    if (idn == 0 || p + idn > end) return 0;
-    uint32_t eid = 0;
-    for (int i = 0; i < idn; i++) eid = (eid << 8) | p[i];
-    const uint8_t *q = p + idn;
-    if (q >= end) return 0;
-
-    uint8_t s = q[0];
-    int sn = 0; uint8_t smask = 0;
-    for (int b = 0; b < 8; b++) {
-        if (s & (0x80 >> b)) { sn = b + 1; smask = (uint8_t)(0xFF >> (b + 1)); break; }
-    }
-    if (sn == 0 || q + sn > end) return 0;
-    uint64_t size = (uint64_t)(s & smask);
-    int allOnes = ((s & smask) == smask);
-    for (int i = 1; i < sn; i++) { size = (size << 8) | q[i]; if (q[i] != 0xFF) allOnes = 0; }
-
-    const uint8_t *d = q + sn;
+    const uint8_t *d = p + hdr;
     uint64_t avail = (uint64_t)(end - d);
-    uint64_t dl = allOnes ? avail : (size > avail ? avail : size);  /* unknown size -> to buffer end */
-    *id = eid; *dp = d; *dlen = dl;
+    uint64_t dl = unk ? avail : (size > avail ? avail : size);  /* unknown/truncated -> buffer end */
+    *dp = d; *dlen = dl;
     *pp = d + dl;                         /* truncated/unknown -> == end -> loop stops */
     return 1;
 }
@@ -378,7 +386,7 @@ static NSString *MKVCodecName(const char *cid) {
 typedef struct {
     double   timecodeScale;      /* ns per Duration unit (Matroska default 1e6) */
     double   duration;           /* in timecodeScale units */
-    uint64_t width, height;      /* first video track's display size (aspect-correct) */
+    uint64_t width, height;      /* first video track's pixel size (display if in pixels, else coded) */
     uint64_t defDurNs;           /* first video track's per-frame duration, ns */
     char     videoCodec[40];     /* first video track's CodecID */
     int      hasAudio;
@@ -396,7 +404,8 @@ static void MKVCopyStr(char *dst, size_t cap, const uint8_t *src, uint64_t n) {
 /* Walk the children of one TrackEntry (already isolated to [p, end)). */
 static void MKVParseTrackEntry(const uint8_t *p, const uint8_t *end, MKVState *s) {
     uint32_t id; const uint8_t *dp; uint64_t dl;
-    uint64_t px = 0, py = 0, dispx = 0, dispy = 0, defDur = 0, chans = 0, type = 0;
+    uint64_t px = 0, py = 0, dispx = 0, dispy = 0, dispUnit = 0;
+    uint64_t defDur = 0, chans = 0, type = 0;
     double rate = 0; int hasVideo = 0, hasAudio = 0;
     char codec[40] = {0};
     while (MKVNext(&p, end, &id, &dp, &dl)) {
@@ -409,10 +418,11 @@ static void MKVParseTrackEntry(const uint8_t *p, const uint8_t *end, MKVState *s
                 const uint8_t *vp = dp, *ve = dp + dl;
                 uint32_t vid; const uint8_t *vdp; uint64_t vdl;
                 while (MKVNext(&vp, ve, &vid, &vdp, &vdl)) {
-                    if      (vid == 0xB0)   px    = MKVUInt(vdp, vdl); /* PixelWidth    */
-                    else if (vid == 0xBA)   py    = MKVUInt(vdp, vdl); /* PixelHeight   */
-                    else if (vid == 0x54B0) dispx = MKVUInt(vdp, vdl); /* DisplayWidth  */
-                    else if (vid == 0x54BA) dispy = MKVUInt(vdp, vdl); /* DisplayHeight */
+                    if      (vid == 0xB0)   px       = MKVUInt(vdp, vdl); /* PixelWidth    */
+                    else if (vid == 0xBA)   py       = MKVUInt(vdp, vdl); /* PixelHeight   */
+                    else if (vid == 0x54B0) dispx    = MKVUInt(vdp, vdl); /* DisplayWidth  */
+                    else if (vid == 0x54BA) dispy    = MKVUInt(vdp, vdl); /* DisplayHeight */
+                    else if (vid == 0x54B2) dispUnit = MKVUInt(vdp, vdl); /* DisplayUnit   */
                 }
                 break;
             }
@@ -430,10 +440,13 @@ static void MKVParseTrackEntry(const uint8_t *p, const uint8_t *end, MKVState *s
         }
     }
     if ((hasVideo || type == 1) && s->width == 0) {
-        /* Prefer the aspect-correct display size (matches what a player shows and
-           what the AVFoundation path reports); fall back to the coded size. */
-        uint64_t w = (dispx > 0) ? dispx : px;
-        uint64_t h = (dispy > 0) ? dispy : py;
+        /* Prefer the aspect-correct display size, but ONLY when it is expressed in
+           pixels (DisplayUnit 0, the default). DisplayUnit 1/2/3 means cm / inches
+           / aspect-ratio, where DisplayWidth/Height are not pixel counts (e.g. 16×9)
+           — fall back to the coded size then. */
+        int dispIsPixels = (dispUnit == 0);
+        uint64_t w = (dispIsPixels && dispx > 0) ? dispx : px;
+        uint64_t h = (dispIsPixels && dispy > 0) ? dispy : py;
         if (w > 0 && h > 0) {
             s->width = w; s->height = h; s->defDurNs = defDur;
             MKVCopyStr(s->videoCodec, sizeof s->videoCodec, (const uint8_t *)codec, strlen(codec));
@@ -444,14 +457,24 @@ static void MKVParseTrackEntry(const uint8_t *p, const uint8_t *end, MKVState *s
     }
 }
 
-/* Walk an in-memory Info or Tracks body, harvesting the fields we care about. */
-static void MKVParseBody(const uint8_t *p, const uint8_t *end, MKVState *s) {
+/* Walk an in-memory region, harvesting the fields we care about. Normally called
+   on a single Info or Tracks body (children at the top level), but it also recurses
+   into Segment/Info/Tracks masters and stops at the first Cluster, so it stays
+   correct when handed a larger window (e.g. an unknown-size master's contents). */
+static void MKVParseBody(const uint8_t *p, const uint8_t *end, int depth, MKVState *s) {
+    if (depth > 4) return;
     uint32_t id; const uint8_t *dp; uint64_t dl;
     while (MKVNext(&p, end, &id, &dp, &dl)) {
         switch (id) {
+            case 0x18538067:  /* Segment */
+            case 0x1549A966:  /* Info    */
+            case 0x1654AE6B:  /* Tracks  */
+                MKVParseBody(dp, dp + dl, depth + 1, s);
+                break;
+            case 0xAE:     MKVParseTrackEntry(dp, dp + dl, s);         break; /* TrackEntry    */
             case 0x2AD7B1: s->timecodeScale = (double)MKVUInt(dp, dl); break; /* TimecodeScale */
             case 0x4489:   s->duration      = MKVFloat(dp, dl);        break; /* Duration      */
-            case 0xAE:     MKVParseTrackEntry(dp, dp + dl, s);         break; /* TrackEntry    */
+            case 0x1F43B675: return;   /* Cluster: media data begins, nothing useful past here */
             default: break;
         }
     }
@@ -465,27 +488,9 @@ static int MKVFileHeader(int fd, off_t off, uint32_t *id, off_t *dataOff,
     uint8_t h[12];
     ssize_t got = pread(fd, h, sizeof h, off);
     if (got < 2) return 0;
-    const uint8_t *end = h + got;
-
-    uint8_t f = h[0];
-    int idn = (f & 0x80) ? 1 : (f & 0x40) ? 2 : (f & 0x20) ? 3 : (f & 0x10) ? 4 : 0;
-    if (idn == 0 || h + idn > end) return 0;
-    uint32_t eid = 0;
-    for (int i = 0; i < idn; i++) eid = (eid << 8) | h[i];
-
-    const uint8_t *q = h + idn;
-    if (q >= end) return 0;
-    uint8_t sb = q[0];
-    int sn = 0; uint8_t smask = 0;
-    for (int b = 0; b < 8; b++) {
-        if (sb & (0x80 >> b)) { sn = b + 1; smask = (uint8_t)(0xFF >> (b + 1)); break; }
-    }
-    if (sn == 0 || q + sn > end) return 0;
-    uint64_t sz = (uint64_t)(sb & smask);
-    int allOnes = ((sb & smask) == smask);
-    for (int i = 1; i < sn; i++) { sz = (sz << 8) | q[i]; if (q[i] != 0xFF) allOnes = 0; }
-
-    *id = eid; *dataOff = off + idn + sn; *size = sz; if (unknown) *unknown = allOnes;
+    int hdr;
+    if (!MKVDecodeHeader(h, (size_t)got, id, &hdr, size, unknown)) return 0;
+    *dataOff = off + hdr;
     return 1;
 }
 
@@ -502,9 +507,9 @@ static MIInfo *ParseMKV(NSURL *url) {
         close(fd); return nil;                     /* not EBML */
     }
 
-    /* Top level: skip the EBML header, find the Segment. */
+    /* Top level: skip the EBML header (and any leading padding), find the Segment. */
     off_t off = 0, segData = -1, segEnd = 0;
-    for (int i = 0; i < 8 && off < fileSize; i++) {
+    for (int i = 0; i < 64 && off < fileSize; i++) {
         uint32_t id; off_t dOff; uint64_t sz; int unk;
         if (!MKVFileHeader(fd, off, &id, &dOff, &sz, &unk)) break;
         if (id == 0x18538067) {                    /* Segment */
@@ -518,6 +523,7 @@ static MIInfo *ParseMKV(NSURL *url) {
     }
     if (segData < 0) { close(fd); return nil; }
 
+    const uint64_t kBodyCap = 8u * 1024 * 1024;
     MKVState s = { .timecodeScale = 1.0e6 };
     int haveInfo = 0, haveTracks = 0;
     off = segData;
@@ -525,16 +531,25 @@ static MIInfo *ParseMKV(NSURL *url) {
         uint32_t id; off_t dOff; uint64_t sz; int unk;
         if (!MKVFileHeader(fd, off, &id, &dOff, &sz, &unk)) break;
         if (id == 0x1F43B675) break;               /* Cluster: media data begins */
-        if (unk) break;                            /* unknown-size child: can't seek past it */
-        if (id == 0x1549A966 || id == 0x1654AE6B) {/* Info / Tracks: read & parse the body */
-            uint64_t rd = (sz > 8u * 1024 * 1024) ? 8u * 1024 * 1024 : sz;
+
+        int wanted = (id == 0x1549A966 || id == 0x1654AE6B);  /* Info / Tracks */
+        if (wanted || unk) {
+            /* Read this element's body and harvest it. For an unknown-size master
+               (rare — some streamed muxers) we can't know its extent, so read a
+               window to segEnd; the recursive walker harvests Info/Tracks children
+               and stops at the first Cluster. */
+            uint64_t avail = (uint64_t)(segEnd - dOff);
+            uint64_t want  = unk ? avail : (sz < avail ? sz : avail);
+            uint64_t rd    = (want > kBodyCap) ? kBodyCap : want;
             NSMutableData *body = [NSMutableData dataWithLength:(NSUInteger)rd];
             ssize_t got = pread(fd, body.mutableBytes, (size_t)rd, dOff);
             if (got > 0) {
                 const uint8_t *b = body.bytes;
-                MKVParseBody(b, b + got, &s);
-                if (id == 0x1549A966) haveInfo = 1; else haveTracks = 1;
+                MKVParseBody(b, b + got, 0, &s);
+                if      (id == 0x1549A966) haveInfo   = 1;
+                else if (id == 0x1654AE6B) haveTracks = 1;
             }
+            if (unk) break;    /* can't reliably resume past an unknown-size element */
         }
         if (haveInfo && haveTracks) break;
         off = dOff + (off_t)sz;                     /* seek past this sibling */
@@ -558,7 +573,6 @@ static MIInfo *ParseMKV(NSURL *url) {
 
     if (v.count == 0) return nil;
     MIInfo *info = [MIInfo new];
-    info.category = (s.width > 0) ? CAT_VIDEO : CAT_AUDIO;
     info.values = v;
     return info;
 }
@@ -639,7 +653,6 @@ static MIInfo *ParseAV(NSURL *url, MICategory hint) {
 
     if (v.count == 0) return nil;
     MIInfo *info = [MIInfo new];
-    info.category = isVideo ? CAT_VIDEO : CAT_AUDIO;
     info.values = v;
     return info;
 }
@@ -695,7 +708,6 @@ static MIInfo *InfoForPath(NSString *path, MICategory cat) {
     }
     if (!info) {                       /* sentinel: parsed, nothing usable */
         info = [MIInfo new];
-        info.category = cat;
         info.values = @{};
     }
     [gCache setObject:info forKey:key];

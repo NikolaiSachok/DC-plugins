@@ -232,6 +232,36 @@ static NSString *makeMKVBadDuration(NSString *dir) {
     return path;
 }
 
+static NSString *makeMKVAspectDisplay(NSString *dir) {
+    /* Video where the display size is an ASPECT RATIO (DisplayUnit=3, 16:9), not
+       pixels. The parser must ignore DisplayWidth/Height here and report the coded
+       1280x720 — not a nonsensical "16 × 9". */
+    NSMutableData *file = [NSMutableData data];
+    const uint8_t EBMLHDR[4] = {0x1A,0x45,0xDF,0xA3};
+    ebmlEl(file, EBMLHDR, 4, [NSData data]);
+    NSMutableData *info = [NSMutableData data];
+    { const uint8_t id[3] = {0x2A,0xD7,0xB1}; ebmlEl(info, id, 3, ebmlUInt(1000000)); }
+    { const uint8_t id[2] = {0x44,0x89};      ebmlEl(info, id, 2, ebmlF64(1000.0)); }
+    NSMutableData *video = [NSMutableData data];
+    { const uint8_t id[1] = {0xB0};      ebmlEl(video, id, 1, ebmlUInt(1280)); } /* PixelWidth    */
+    { const uint8_t id[1] = {0xBA};      ebmlEl(video, id, 1, ebmlUInt(720));  } /* PixelHeight   */
+    { const uint8_t id[2] = {0x54,0xB0}; ebmlEl(video, id, 2, ebmlUInt(16));   } /* DisplayWidth  */
+    { const uint8_t id[2] = {0x54,0xBA}; ebmlEl(video, id, 2, ebmlUInt(9));    } /* DisplayHeight */
+    { const uint8_t id[2] = {0x54,0xB2}; ebmlEl(video, id, 2, ebmlUInt(3));    } /* DisplayUnit=3 (AR) */
+    NSMutableData *track = [NSMutableData data];
+    { const uint8_t id[1] = {0x83}; ebmlEl(track, id, 1, ebmlUInt(1)); }
+    { const uint8_t id[1] = {0xE0}; ebmlEl(track, id, 1, video); }
+    NSMutableData *tracks = [NSMutableData data];
+    { const uint8_t id[1] = {0xAE}; ebmlEl(tracks, id, 1, track); }
+    NSMutableData *seg = [NSMutableData data];
+    { const uint8_t id[4] = {0x15,0x49,0xA9,0x66}; ebmlEl(seg, id, 4, info);   }
+    { const uint8_t id[4] = {0x16,0x54,0xAE,0x6B}; ebmlEl(seg, id, 4, tracks); }
+    { const uint8_t id[4] = {0x18,0x53,0x80,0x67}; ebmlEl(file, id, 4, seg);   }
+    NSString *path = [dir stringByAppendingPathComponent:@"aspect-display.mkv"];
+    [file writeToFile:path atomically:YES];
+    return path;
+}
+
 int main(int argc, char **argv) {
     @autoreleasepool {
         if (argc < 2) { fprintf(stderr, "usage: test_host <MediaInfo.wdx>\n"); return 2; }
@@ -326,6 +356,16 @@ int main(int argc, char **argv) {
         check([getStr(badmkv, @"Summary") isEqualToString:@"640 × 480"],
               ([NSString stringWithFormat:@"hostile-duration MKV Summary = '%@'",
                 getStr(badmkv, @"Summary")]));
+
+        /* ---- robustness: DisplayUnit=aspect-ratio must not be read as pixels ---- */
+        const char *armkv = makeMKVAspectDisplay(dir).fileSystemRepresentation;
+        check(getInt(armkv, @"Width") == 1280,
+              ([NSString stringWithFormat:@"aspect-ratio-display MKV Width = %d (want coded 1280, not 16)",
+                getInt(armkv, @"Width")]));
+        check(getInt(armkv, @"Height") == 720, @"aspect-ratio-display MKV Height = 720 (coded, not 9)");
+        check([getStr(armkv, @"Summary") isEqualToString:@"1280 × 720 · 0:01"],
+              ([NSString stringWithFormat:@"aspect-ratio-display MKV Summary = '%@'",
+                getStr(armkv, @"Summary")]));
 
         /* ---- regression: survive DC's FP-exception traps (the RawCamera crash) ----
            Double Commander (Lazarus/FPC) enables FP-exception traps; Apple media
