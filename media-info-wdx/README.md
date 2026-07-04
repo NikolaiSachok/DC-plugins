@@ -17,7 +17,7 @@ network**:
 | **Audio** (mp3, m4a, aac, wav, aiff, caf) | Duration, Bitrate, Sample rate, Channels, Audio codec | **AVFoundation** |
 | **Video** (mp4, mov, m4v, 3gp) | Dimensions, Duration, Frame rate, Bitrate, Video/Audio codec | **AVFoundation** |
 | **Video** (avi) | Dimensions, Duration, Frame rate | self-contained **RIFF `avih`** reader (AVFoundation can't open AVI on macOS) |
-| **Video** (mkv, webm) | Dimensions, Duration, Frame rate | self-contained **EBML** reader (AVFoundation can't open Matroska on macOS) |
+| **Video** (mkv, webm) | Dimensions, Duration, Frame rate, Video/Audio codec, Sample rate, Channels | self-contained **EBML** reader (AVFoundation can't open Matroska on macOS) |
 | **PDF** | Page count | **CoreGraphics (CGPDF)** |
 
 ## The `Summary` field

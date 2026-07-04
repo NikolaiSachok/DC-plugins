@@ -155,9 +155,13 @@ static NSData *ebmlF64(double v) {
     return [NSData dataWithBytes:b length:8];
 }
 
+static NSData *ebmlBytes(const char *s) { return [NSData dataWithBytes:s length:strlen(s)]; }
+
 static NSString *makeMKV(NSString *dir) {
-    /* Minimal Matroska: 1920x1080 video track, 3.2s (TimecodeScale 1e6 ns,
-       Duration 3200 units), no clusters — exercises the EBML head parser. */
+    /* Realistic Matroska head: 3.2s (TimecodeScale 1e6 ns, Duration 3200 units),
+       an anamorphic H.264 video track (coded 1440x1080, display 1920x1080), and a
+       stereo 48 kHz AAC audio track. No clusters. Exercises the seeking parser,
+       display-over-coded size preference, audio parsing, and CodecID mapping. */
     NSMutableData *file = [NSMutableData data];
     const uint8_t EBMLHDR[4] = {0x1A,0x45,0xDF,0xA3};
     ebmlEl(file, EBMLHDR, 4, [NSData data]);        /* empty EBML header */
@@ -167,15 +171,29 @@ static NSString *makeMKV(NSString *dir) {
     { const uint8_t id[3] = {0x2A,0xD7,0xB1}; ebmlEl(info, id, 3, ebmlUInt(1000000)); } /* TimecodeScale */
     { const uint8_t id[2] = {0x44,0x89};      ebmlEl(info, id, 2, ebmlF64(3200.0));   } /* Duration     */
 
-    /* Tracks > TrackEntry > Video(PixelWidth/Height) + TrackType=1 */
+    /* Video TrackEntry: coded 1440x1080 but display 1920x1080 (anamorphic). */
     NSMutableData *video = [NSMutableData data];
-    { const uint8_t id[1] = {0xB0}; ebmlEl(video, id, 1, ebmlUInt(1920)); }
-    { const uint8_t id[1] = {0xBA}; ebmlEl(video, id, 1, ebmlUInt(1080)); }
-    NSMutableData *track = [NSMutableData data];
-    { const uint8_t id[1] = {0x83}; ebmlEl(track, id, 1, ebmlUInt(1)); }              /* TrackType video */
-    { const uint8_t id[1] = {0xE0}; ebmlEl(track, id, 1, video); }
+    { const uint8_t id[1] = {0xB0};      ebmlEl(video, id, 1, ebmlUInt(1440)); } /* PixelWidth    */
+    { const uint8_t id[1] = {0xBA};      ebmlEl(video, id, 1, ebmlUInt(1080)); } /* PixelHeight   */
+    { const uint8_t id[2] = {0x54,0xB0}; ebmlEl(video, id, 2, ebmlUInt(1920)); } /* DisplayWidth  */
+    { const uint8_t id[2] = {0x54,0xBA}; ebmlEl(video, id, 2, ebmlUInt(1080)); } /* DisplayHeight */
+    NSMutableData *vtrack = [NSMutableData data];
+    { const uint8_t id[1] = {0x83}; ebmlEl(vtrack, id, 1, ebmlUInt(1)); }                     /* TrackType video */
+    { const uint8_t id[1] = {0x86}; ebmlEl(vtrack, id, 1, ebmlBytes("V_MPEG4/ISO/AVC")); }   /* CodecID -> H.264 */
+    { const uint8_t id[1] = {0xE0}; ebmlEl(vtrack, id, 1, video); }
+
+    /* Audio TrackEntry: stereo 48 kHz AAC. */
+    NSMutableData *audio = [NSMutableData data];
+    { const uint8_t id[1] = {0xB5}; ebmlEl(audio, id, 1, ebmlF64(48000.0)); }   /* SamplingFrequency */
+    { const uint8_t id[1] = {0x9F}; ebmlEl(audio, id, 1, ebmlUInt(2)); }        /* Channels          */
+    NSMutableData *atrack = [NSMutableData data];
+    { const uint8_t id[1] = {0x83}; ebmlEl(atrack, id, 1, ebmlUInt(2)); }               /* TrackType audio */
+    { const uint8_t id[1] = {0x86}; ebmlEl(atrack, id, 1, ebmlBytes("A_AAC")); }        /* CodecID -> AAC  */
+    { const uint8_t id[1] = {0xE1}; ebmlEl(atrack, id, 1, audio); }
+
     NSMutableData *tracks = [NSMutableData data];
-    { const uint8_t id[1] = {0xAE}; ebmlEl(tracks, id, 1, track); }
+    { const uint8_t id[1] = {0xAE}; ebmlEl(tracks, id, 1, vtrack); }
+    { const uint8_t id[1] = {0xAE}; ebmlEl(tracks, id, 1, atrack); }
 
     NSMutableData *seg = [NSMutableData data];
     { const uint8_t id[4] = {0x15,0x49,0xA9,0x66}; ebmlEl(seg, id, 4, info);   }
@@ -183,6 +201,33 @@ static NSString *makeMKV(NSString *dir) {
     { const uint8_t id[4] = {0x18,0x53,0x80,0x67}; ebmlEl(file, id, 4, seg);   }
 
     NSString *path = [dir stringByAppendingPathComponent:@"sample.mkv"];
+    [file writeToFile:path atomically:YES];
+    return path;
+}
+
+static NSString *makeMKVBadDuration(NSString *dir) {
+    /* Hostile input: a finite-but-absurd Duration (1e300) that would overflow
+       llround if it reached FormatDuration. The parser must still yield the
+       video dimensions and simply omit Duration. */
+    NSMutableData *file = [NSMutableData data];
+    const uint8_t EBMLHDR[4] = {0x1A,0x45,0xDF,0xA3};
+    ebmlEl(file, EBMLHDR, 4, [NSData data]);
+    NSMutableData *info = [NSMutableData data];
+    { const uint8_t id[3] = {0x2A,0xD7,0xB1}; ebmlEl(info, id, 3, ebmlUInt(1000000)); }
+    { const uint8_t id[2] = {0x44,0x89};      ebmlEl(info, id, 2, ebmlF64(1e300)); }
+    NSMutableData *video = [NSMutableData data];
+    { const uint8_t id[1] = {0xB0}; ebmlEl(video, id, 1, ebmlUInt(640)); }
+    { const uint8_t id[1] = {0xBA}; ebmlEl(video, id, 1, ebmlUInt(480)); }
+    NSMutableData *track = [NSMutableData data];
+    { const uint8_t id[1] = {0x83}; ebmlEl(track, id, 1, ebmlUInt(1)); }
+    { const uint8_t id[1] = {0xE0}; ebmlEl(track, id, 1, video); }
+    NSMutableData *tracks = [NSMutableData data];
+    { const uint8_t id[1] = {0xAE}; ebmlEl(tracks, id, 1, track); }
+    NSMutableData *seg = [NSMutableData data];
+    { const uint8_t id[4] = {0x15,0x49,0xA9,0x66}; ebmlEl(seg, id, 4, info);   }
+    { const uint8_t id[4] = {0x16,0x54,0xAE,0x6B}; ebmlEl(seg, id, 4, tracks); }
+    { const uint8_t id[4] = {0x18,0x53,0x80,0x67}; ebmlEl(file, id, 4, seg);   }
+    NSString *path = [dir stringByAppendingPathComponent:@"bad-duration.mkv"];
     [file writeToFile:path atomically:YES];
     return path;
 }
@@ -256,15 +301,31 @@ int main(int argc, char **argv) {
         check([getStr(avi, @"Summary") isEqualToString:@"320 × 240 · 0:02"],
               ([NSString stringWithFormat:@"AVI Summary = '%@'", getStr(avi, @"Summary")]));
 
-        /* ---- video: MKV/WebM via our own EBML parser ---- */
+        /* ---- video: MKV/WebM via our own seeking EBML parser ---- */
         const char *mkv = makeMKV(dir).fileSystemRepresentation;
-        check(getInt(mkv, @"Width") == 1920,  @"MKV Width = 1920");
+        check(getInt(mkv, @"Width") == 1920,  @"MKV Width = 1920 (display size, not coded 1440)");
         check(getInt(mkv, @"Height") == 1080, @"MKV Height = 1080");
         check(fabs(getFloat(mkv, @"Duration (s)") - 3.2) < 0.05,
               ([NSString stringWithFormat:@"MKV Duration (s) = %.2f (want 3.2)",
                 getFloat(mkv, @"Duration (s)")]));
+        check([getStr(mkv, @"Video codec") isEqualToString:@"H.264"],
+              ([NSString stringWithFormat:@"MKV Video codec = '%@'", getStr(mkv, @"Video codec")]));
+        check([getStr(mkv, @"Audio codec") isEqualToString:@"AAC"],
+              ([NSString stringWithFormat:@"MKV Audio codec = '%@'", getStr(mkv, @"Audio codec")]));
+        check(getInt(mkv, @"Sample rate") == 48000, @"MKV Sample rate = 48000");
+        check(getInt(mkv, @"Channels") == 2, @"MKV Channels = 2");
         check([getStr(mkv, @"Summary") isEqualToString:@"1920 × 1080 · 0:03"],
               ([NSString stringWithFormat:@"MKV Summary = '%@'", getStr(mkv, @"Summary")]));
+
+        /* ---- robustness: a hostile/absurd Duration must not become garbage ---- */
+        const char *badmkv = makeMKVBadDuration(dir).fileSystemRepresentation;
+        check(getInt(badmkv, @"Width") == 640, @"hostile-duration MKV still yields Width = 640");
+        check(getStr(badmkv, @"Duration") == nil,
+              ([NSString stringWithFormat:@"absurd MKV Duration rejected (got '%@')",
+                getStr(badmkv, @"Duration")]));
+        check([getStr(badmkv, @"Summary") isEqualToString:@"640 × 480"],
+              ([NSString stringWithFormat:@"hostile-duration MKV Summary = '%@'",
+                getStr(badmkv, @"Summary")]));
 
         /* ---- regression: survive DC's FP-exception traps (the RawCamera crash) ----
            Double Commander (Lazarus/FPC) enables FP-exception traps; Apple media
