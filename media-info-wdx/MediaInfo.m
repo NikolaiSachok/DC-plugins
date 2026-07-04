@@ -23,11 +23,13 @@
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMedia/CoreMedia.h>
 #import <sys/stat.h>
+#import <fcntl.h>
+#import <unistd.h>
 #import <fenv.h>
 
 #include "contplug.h"
 
-#define MI_VERSION "0.1.0"
+#define MI_VERSION "0.2.0"
 
 /* ---- Field table -------------------------------------------------------- */
 
@@ -94,8 +96,10 @@ static MICategory CategoryForPath(NSString *path) {
             @"dng",@"cr2",@"cr3",@"nef",@"arw",@"orf",@"rw2",@"raf",@"sr2",@"pef" ]];
         aud = [NSSet setWithArray:@[ @"mp3",@"m4a",@"aac",@"wav",@"aiff",@"aif",
             @"aifc",@"caf" ]];
-        /* avi is read by our own RIFF parser; the rest go through AVFoundation. */
-        vid = [NSSet setWithArray:@[ @"mp4",@"mov",@"m4v",@"3gp",@"3g2",@"avi" ]];
+        /* avi/mkv/webm are read by our own container parsers (macOS frameworks
+           can't open them); the rest go through AVFoundation. */
+        vid = [NSSet setWithArray:@[ @"mp4",@"mov",@"m4v",@"3gp",@"3g2",
+            @"avi",@"mkv",@"webm" ]];
     });
     if ([img containsObject:ext]) return CAT_IMAGE;
     if ([aud containsObject:ext]) return CAT_AUDIO;
@@ -114,12 +118,12 @@ static const char *kDetectString =
     "(EXT=\"ORF\")|(EXT=\"RW2\")|(EXT=\"RAF\")|(EXT=\"SR2\")|(EXT=\"PEF\")|"
     "(EXT=\"MP3\")|(EXT=\"M4A\")|(EXT=\"AAC\")|(EXT=\"WAV\")|(EXT=\"AIFF\")|"
     "(EXT=\"AIF\")|(EXT=\"AIFC\")|(EXT=\"CAF\")|(EXT=\"MP4\")|(EXT=\"MOV\")|"
-    "(EXT=\"M4V\")|(EXT=\"3GP\")|(EXT=\"3G2\")|(EXT=\"AVI\")|(EXT=\"PDF\")";
+    "(EXT=\"M4V\")|(EXT=\"3GP\")|(EXT=\"3G2\")|(EXT=\"AVI\")|(EXT=\"MKV\")|"
+    "(EXT=\"WEBM\")|(EXT=\"PDF\")";
 
 /* ---- Parsed-info value object + cache ----------------------------------- */
 
 @interface MIInfo : NSObject
-@property (nonatomic) MICategory category;
 @property (nonatomic, strong) NSDictionary<NSNumber *, id> *values; /* field -> NSNumber|NSString */
 @end
 @implementation MIInfo
@@ -130,7 +134,10 @@ static NSCache<NSString *, MIInfo *> *gCache;
 /* ---- Formatting helpers ------------------------------------------------- */
 
 static NSString *FormatDuration(double secs) {
-    if (!isfinite(secs) || secs < 0) return nil;
+    /* Reject non-finite, negative, and absurd (>~100 years) values: the last
+       guards against a corrupt/hostile container feeding an out-of-range double
+       into llround, which is otherwise undefined. */
+    if (!isfinite(secs) || secs < 0 || secs > 3.15e9) return nil;
     long t = (long)llround(secs);
     long h = t / 3600, m = (t % 3600) / 60, s = t % 60;
     if (h > 0) return [NSString stringWithFormat:@"%ld:%02ld:%02ld", h, m, s];
@@ -195,7 +202,6 @@ static MIInfo *ParseImage(NSURL *url) {
     if (depth && depth.intValue > 0) v[@(F_COLORDEPTH)] = @(depth.intValue);
 
     MIInfo *info = [MIInfo new];
-    info.category = CAT_IMAGE;
     info.values = v;
     return info;
 }
@@ -212,9 +218,34 @@ static MIInfo *ParsePDF(NSURL *url) {
     v[@(F_SUMMARY)]   = (n == 1) ? @"1 page"
                                  : [NSString stringWithFormat:@"%zu pages", n];
     MIInfo *info = [MIInfo new];
-    info.category = CAT_PDF;
     info.values = v;
     return info;
+}
+
+/* Populate the common video fields (dimensions, duration, frame rate) and the
+   adaptive Summary from raw numbers. Shared by every container that yields plain
+   width/height/seconds/fps (our AVI and Matroska readers) so the field assembly
+   and Summary format live in one place. Any of the inputs may be 0/absent. */
+static void FillVideoFields(NSMutableDictionary *v, long w, long h,
+                            double secs, double fps) {
+    NSString *dims = nil;
+    if (w > 0 && h > 0 && w <= 100000 && h <= 100000) {
+        v[@(F_WIDTH)]  = @((int)w);
+        v[@(F_HEIGHT)] = @((int)h);
+        dims = [NSString stringWithFormat:@"%ld × %ld", w, h];
+        v[@(F_DIMENSIONS)] = dims;
+    }
+    NSString *durStr = (secs > 0) ? FormatDuration(secs) : nil;
+    if (durStr) {
+        v[@(F_DURATION)]     = durStr;
+        v[@(F_DURATIONSECS)] = @(round(secs * 10.0) / 10.0);
+    }
+    if (fps > 0)
+        v[@(F_FRAMERATE)] = @(round(fps * 100.0) / 100.0);
+
+    if (dims && durStr) v[@(F_SUMMARY)] = [NSString stringWithFormat:@"%@ · %@", dims, durStr];
+    else if (dims)      v[@(F_SUMMARY)] = dims;
+    else if (durStr)    v[@(F_SUMMARY)] = durStr;
 }
 
 /* AVI is a RIFF format AVFoundation can't open on macOS, but its main header
@@ -245,30 +276,303 @@ static MIInfo *ParseAVI(NSURL *url) {
     uint32_t hgt          = RdLE32(h + 36);
     if (w > 100000 || hgt > 100000) return nil;   /* sanity */
 
-    NSMutableDictionary *v = [NSMutableDictionary dictionary];
-    NSString *dims = nil;
-    if (w > 0 && hgt > 0) {
-        v[@(F_WIDTH)]  = @(w);
-        v[@(F_HEIGHT)] = @(hgt);
-        dims = [NSString stringWithFormat:@"%u × %u", w, hgt];
-        v[@(F_DIMENSIONS)] = dims;
-    }
     double secs = (double)usecPerFrame * (double)totalFrames / 1.0e6;
-    NSString *durStr = (secs > 0) ? FormatDuration(secs) : nil;
-    if (durStr) {
-        v[@(F_DURATION)]     = durStr;
-        v[@(F_DURATIONSECS)] = @(round(secs * 10.0) / 10.0);
-    }
-    if (usecPerFrame > 0)
-        v[@(F_FRAMERATE)] = @(round(1.0e6 / (double)usecPerFrame * 100.0) / 100.0);
-
-    if (dims && durStr) v[@(F_SUMMARY)] = [NSString stringWithFormat:@"%@ · %@", dims, durStr];
-    else if (dims)      v[@(F_SUMMARY)] = dims;
-    else if (durStr)    v[@(F_SUMMARY)] = durStr;
+    double fps  = (usecPerFrame > 0) ? 1.0e6 / (double)usecPerFrame : 0;
+    NSMutableDictionary *v = [NSMutableDictionary dictionary];
+    FillVideoFields(v, w, hgt, secs, fps);
 
     if (v.count == 0) return nil;
     MIInfo *info = [MIInfo new];
-    info.category = CAT_VIDEO;
+    info.values = v;
+    return info;
+}
+
+/* Matroska / WebM is an EBML container that AVFoundation can't open on macOS.
+   Its Segment > Info (Duration, TimecodeScale) and Segment > Tracks > TrackEntry
+   (Video/Audio/CodecID) elements carry everything we need, and they precede the
+   media Clusters. We *seek* over the Segment's children — reading only each
+   element's short header, then the small Info/Tracks bodies in full, and skipping
+   past large siblings (SeekHead, Cues, Attachments) without reading them. So the
+   work is a few KB regardless of file size or where Tracks sits, and we never miss
+   a spec-valid file whose Tracks happens to fall past a fixed byte window.
+   EBML basics: every element is an ID (variable 1-4 bytes, marker bits kept) then
+   a size VINT (1-8 bytes, marker stripped) then data. */
+
+/* Decode one EBML element header (ID + size VINT) from [buf, buf+len). On success
+   sets id, the header length in bytes, the declared data size, and whether the
+   size is the EBML "unknown" sentinel; returns 1. Returns 0 if truncated/invalid.
+   Shared by the in-memory walker (MKVNext) and the file-seeking reader. */
+static int MKVDecodeHeader(const uint8_t *buf, size_t len, uint32_t *id,
+                           int *hdrLen, uint64_t *size, int *unknown) {
+    if (len < 2) return 0;
+    uint8_t f = buf[0];
+    int idn = (f & 0x80) ? 1 : (f & 0x40) ? 2 : (f & 0x20) ? 3 : (f & 0x10) ? 4 : 0;
+    if (idn == 0 || (size_t)idn >= len) return 0;
+    uint32_t eid = 0;
+    for (int i = 0; i < idn; i++) eid = (eid << 8) | buf[i];
+
+    const uint8_t *q = buf + idn;
+    uint8_t sb = q[0];
+    int sn = 0; uint8_t smask = 0;
+    for (int b = 0; b < 8; b++) {
+        if (sb & (0x80 >> b)) { sn = b + 1; smask = (uint8_t)(0xFF >> (b + 1)); break; }
+    }
+    if (sn == 0 || (size_t)(idn + sn) > len) return 0;
+    uint64_t sz = (uint64_t)(sb & smask);
+    int allOnes = ((sb & smask) == smask);
+    for (int i = 1; i < sn; i++) { sz = (sz << 8) | q[i]; if (q[i] != 0xFF) allOnes = 0; }
+
+    *id = eid; *hdrLen = idn + sn; *size = sz; if (unknown) *unknown = allOnes;
+    return 1;
+}
+
+/* Read one element at *pp within [*pp, end). On success sets id/data ptr/data
+   len and advances *pp past the element; returns 1. Returns 0 to stop. */
+static int MKVNext(const uint8_t **pp, const uint8_t *end,
+                   uint32_t *id, const uint8_t **dp, uint64_t *dlen) {
+    const uint8_t *p = *pp;
+    if (p >= end) return 0;
+    int hdr; uint64_t size; int unk;
+    if (!MKVDecodeHeader(p, (size_t)(end - p), id, &hdr, &size, &unk)) return 0;
+
+    const uint8_t *d = p + hdr;
+    uint64_t avail = (uint64_t)(end - d);
+    uint64_t dl = unk ? avail : (size > avail ? avail : size);  /* unknown/truncated -> buffer end */
+    *dp = d; *dlen = dl;
+    *pp = d + dl;                         /* truncated/unknown -> == end -> loop stops */
+    return 1;
+}
+
+static uint64_t MKVUInt(const uint8_t *p, uint64_t n) {
+    uint64_t v = 0;
+    for (uint64_t i = 0; i < n && i < 8; i++) v = (v << 8) | p[i];
+    return v;
+}
+
+static double MKVFloat(const uint8_t *p, uint64_t n) {
+    if (n == 4) { uint32_t u = (uint32_t)MKVUInt(p, 4); float f;  memcpy(&f, &u, 4); return f; }
+    if (n == 8) { uint64_t u = MKVUInt(p, 8);           double d; memcpy(&d, &u, 8); return d; }
+    return 0;
+}
+
+/* Matroska CodecID (an ASCII string) -> a friendly name, matching the vocabulary
+   the AVFoundation path already uses. Unknown codecs return nil (blank) rather
+   than exposing a raw "V_MPEG4/ISO/AVC"-style token. */
+static NSString *MKVCodecName(const char *cid) {
+    if (!cid || !cid[0]) return nil;
+    if (!strncmp(cid, "V_MPEG4/ISO/AVC", 15))  return @"H.264";
+    if (!strncmp(cid, "V_MPEGH/ISO/HEVC", 16)) return @"HEVC";
+    if (!strncmp(cid, "V_MPEG4", 7))           return @"MPEG-4";
+    if (!strncmp(cid, "V_MPEG2", 7))           return @"MPEG-2";
+    if (!strncmp(cid, "V_MPEG1", 7))           return @"MPEG-1";
+    if (!strcmp (cid, "V_VP8"))                return @"VP8";
+    if (!strcmp (cid, "V_VP9"))                return @"VP9";
+    if (!strcmp (cid, "V_AV1"))                return @"AV1";
+    if (!strncmp(cid, "V_THEORA", 8))          return @"Theora";
+    if (!strncmp(cid, "A_OPUS", 6))            return @"Opus";
+    if (!strncmp(cid, "A_VORBIS", 8))          return @"Vorbis";
+    if (!strncmp(cid, "A_AAC", 5))             return @"AAC";
+    if (!strncmp(cid, "A_FLAC", 6))            return @"FLAC";
+    if (!strncmp(cid, "A_MPEG/L3", 9))         return @"MP3";
+    if (!strncmp(cid, "A_MPEG/L2", 9))         return @"MP2";
+    if (!strncmp(cid, "A_AC3", 5))             return @"AC-3";
+    if (!strncmp(cid, "A_EAC3", 6))            return @"E-AC-3";
+    if (!strncmp(cid, "A_DTS", 5))             return @"DTS";
+    if (!strncmp(cid, "A_TRUEHD", 8))          return @"TrueHD";
+    if (!strncmp(cid, "A_PCM", 5))             return @"PCM";
+    return nil;
+}
+
+typedef struct {
+    double   timecodeScale;      /* ns per Duration unit (Matroska default 1e6) */
+    double   duration;           /* in timecodeScale units */
+    uint64_t width, height;      /* first video track's pixel size (display if in pixels, else coded) */
+    uint64_t defDurNs;           /* first video track's per-frame duration, ns */
+    char     videoCodec[40];     /* first video track's CodecID */
+    int      hasAudio;
+    double   audioRate;          /* first audio track sampling frequency, Hz */
+    uint64_t audioChannels;
+    char     audioCodec[40];     /* first audio track's CodecID */
+} MKVState;
+
+static void MKVCopyStr(char *dst, size_t cap, const uint8_t *src, uint64_t n) {
+    uint64_t m = (n < cap - 1) ? n : cap - 1;
+    memcpy(dst, src, (size_t)m);
+    dst[m] = 0;
+}
+
+/* Walk the children of one TrackEntry (already isolated to [p, end)). */
+static void MKVParseTrackEntry(const uint8_t *p, const uint8_t *end, MKVState *s) {
+    uint32_t id; const uint8_t *dp; uint64_t dl;
+    uint64_t px = 0, py = 0, dispx = 0, dispy = 0, dispUnit = 0;
+    uint64_t defDur = 0, chans = 0, type = 0;
+    double rate = 0; int hasVideo = 0, hasAudio = 0;
+    char codec[40] = {0};
+    while (MKVNext(&p, end, &id, &dp, &dl)) {
+        switch (id) {
+            case 0x83:     type   = MKVUInt(dp, dl);           break; /* TrackType 1=video 2=audio */
+            case 0x23E383: defDur = MKVUInt(dp, dl);           break; /* DefaultDuration ns        */
+            case 0x86:     MKVCopyStr(codec, sizeof codec, dp, dl); break; /* CodecID */
+            case 0xE0: {   /* Video */
+                hasVideo = 1;
+                const uint8_t *vp = dp, *ve = dp + dl;
+                uint32_t vid; const uint8_t *vdp; uint64_t vdl;
+                while (MKVNext(&vp, ve, &vid, &vdp, &vdl)) {
+                    if      (vid == 0xB0)   px       = MKVUInt(vdp, vdl); /* PixelWidth    */
+                    else if (vid == 0xBA)   py       = MKVUInt(vdp, vdl); /* PixelHeight   */
+                    else if (vid == 0x54B0) dispx    = MKVUInt(vdp, vdl); /* DisplayWidth  */
+                    else if (vid == 0x54BA) dispy    = MKVUInt(vdp, vdl); /* DisplayHeight */
+                    else if (vid == 0x54B2) dispUnit = MKVUInt(vdp, vdl); /* DisplayUnit   */
+                }
+                break;
+            }
+            case 0xE1: {   /* Audio */
+                hasAudio = 1;
+                const uint8_t *ap = dp, *ae = dp + dl;
+                uint32_t aid; const uint8_t *adp; uint64_t adl;
+                while (MKVNext(&ap, ae, &aid, &adp, &adl)) {
+                    if      (aid == 0xB5) rate  = MKVFloat(adp, adl); /* SamplingFrequency */
+                    else if (aid == 0x9F) chans = MKVUInt(adp, adl);  /* Channels          */
+                }
+                break;
+            }
+            default: break;
+        }
+    }
+    if ((hasVideo || type == 1) && s->width == 0) {
+        /* Prefer the aspect-correct display size, but ONLY when it is expressed in
+           pixels (DisplayUnit 0, the default). DisplayUnit 1/2/3 means cm / inches
+           / aspect-ratio, where DisplayWidth/Height are not pixel counts (e.g. 16×9)
+           — fall back to the coded size then. */
+        int dispIsPixels = (dispUnit == 0);
+        uint64_t w = (dispIsPixels && dispx > 0) ? dispx : px;
+        uint64_t h = (dispIsPixels && dispy > 0) ? dispy : py;
+        if (w > 0 && h > 0) {
+            s->width = w; s->height = h; s->defDurNs = defDur;
+            MKVCopyStr(s->videoCodec, sizeof s->videoCodec, (const uint8_t *)codec, strlen(codec));
+        }
+    } else if ((hasAudio || type == 2) && !s->hasAudio) {
+        s->hasAudio = 1; s->audioRate = rate; s->audioChannels = chans;
+        MKVCopyStr(s->audioCodec, sizeof s->audioCodec, (const uint8_t *)codec, strlen(codec));
+    }
+}
+
+/* Walk an in-memory region, harvesting the fields we care about. Normally called
+   on a single Info or Tracks body (children at the top level), but it also recurses
+   into Segment/Info/Tracks masters and stops at the first Cluster, so it stays
+   correct when handed a larger window (e.g. an unknown-size master's contents). */
+static void MKVParseBody(const uint8_t *p, const uint8_t *end, int depth, MKVState *s) {
+    if (depth > 4) return;
+    uint32_t id; const uint8_t *dp; uint64_t dl;
+    while (MKVNext(&p, end, &id, &dp, &dl)) {
+        switch (id) {
+            case 0x18538067:  /* Segment */
+            case 0x1549A966:  /* Info    */
+            case 0x1654AE6B:  /* Tracks  */
+                MKVParseBody(dp, dp + dl, depth + 1, s);
+                break;
+            case 0xAE:     MKVParseTrackEntry(dp, dp + dl, s);         break; /* TrackEntry    */
+            case 0x2AD7B1: s->timecodeScale = (double)MKVUInt(dp, dl); break; /* TimecodeScale */
+            case 0x4489:   s->duration      = MKVFloat(dp, dl);        break; /* Duration      */
+            case 0x1F43B675: return;   /* Cluster: media data begins, nothing useful past here */
+            default: break;
+        }
+    }
+}
+
+/* Read one element header at file offset `off`. On success sets id, the file
+   offset of its data, its declared data size, and whether the size is the EBML
+   "unknown" sentinel; returns 1. Reads at most a 12-byte header via pread. */
+static int MKVFileHeader(int fd, off_t off, uint32_t *id, off_t *dataOff,
+                         uint64_t *size, int *unknown) {
+    uint8_t h[12];
+    ssize_t got = pread(fd, h, sizeof h, off);
+    if (got < 2) return 0;
+    int hdr;
+    if (!MKVDecodeHeader(h, (size_t)got, id, &hdr, size, unknown)) return 0;
+    *dataOff = off + hdr;
+    return 1;
+}
+
+static MIInfo *ParseMKV(NSURL *url) {
+    int fd = open(url.fileSystemRepresentation, O_RDONLY);
+    if (fd < 0) return nil;
+    struct stat st;
+    if (fstat(fd, &st) != 0 || st.st_size < 4) { close(fd); return nil; }
+    off_t fileSize = st.st_size;
+
+    uint8_t magic[4];
+    if (pread(fd, magic, 4, 0) != 4 ||
+        !(magic[0] == 0x1A && magic[1] == 0x45 && magic[2] == 0xDF && magic[3] == 0xA3)) {
+        close(fd); return nil;                     /* not EBML */
+    }
+
+    /* Top level: skip the EBML header (and any leading padding), find the Segment. */
+    off_t off = 0, segData = -1, segEnd = 0;
+    for (int i = 0; i < 64 && off < fileSize; i++) {
+        uint32_t id; off_t dOff; uint64_t sz; int unk;
+        if (!MKVFileHeader(fd, off, &id, &dOff, &sz, &unk)) break;
+        if (id == 0x18538067) {                    /* Segment */
+            segData = dOff;
+            segEnd  = unk ? fileSize
+                          : (off_t)MIN((uint64_t)fileSize, (uint64_t)dOff + sz);
+            break;
+        }
+        if (unk) break;                            /* unknown-size non-segment: can't skip */
+        off = dOff + (off_t)sz;
+    }
+    if (segData < 0) { close(fd); return nil; }
+
+    const uint64_t kBodyCap = 8u * 1024 * 1024;
+    MKVState s = { .timecodeScale = 1.0e6 };
+    int haveInfo = 0, haveTracks = 0;
+    off = segData;
+    for (int guard = 0; guard < 8192 && off < segEnd; guard++) {
+        uint32_t id; off_t dOff; uint64_t sz; int unk;
+        if (!MKVFileHeader(fd, off, &id, &dOff, &sz, &unk)) break;
+        if (id == 0x1F43B675) break;               /* Cluster: media data begins */
+
+        int wanted = (id == 0x1549A966 || id == 0x1654AE6B);  /* Info / Tracks */
+        if (wanted || unk) {
+            /* Read this element's body and harvest it. For an unknown-size master
+               (rare — some streamed muxers) we can't know its extent, so read a
+               window to segEnd; the recursive walker harvests Info/Tracks children
+               and stops at the first Cluster. */
+            uint64_t avail = (uint64_t)(segEnd - dOff);
+            uint64_t want  = unk ? avail : (sz < avail ? sz : avail);
+            uint64_t rd    = (want > kBodyCap) ? kBodyCap : want;
+            NSMutableData *body = [NSMutableData dataWithLength:(NSUInteger)rd];
+            ssize_t got = pread(fd, body.mutableBytes, (size_t)rd, dOff);
+            if (got > 0) {
+                const uint8_t *b = body.bytes;
+                MKVParseBody(b, b + got, 0, &s);
+                if      (id == 0x1549A966) haveInfo   = 1;
+                else if (id == 0x1654AE6B) haveTracks = 1;
+            }
+            if (unk) break;    /* can't reliably resume past an unknown-size element */
+        }
+        if (haveInfo && haveTracks) break;
+        off = dOff + (off_t)sz;                     /* seek past this sibling */
+    }
+    close(fd);
+    if (s.timecodeScale <= 0) s.timecodeScale = 1.0e6;
+
+    NSMutableDictionary *v = [NSMutableDictionary dictionary];
+    double secs = s.duration * s.timecodeScale / 1.0e9;
+    double fps  = (s.defDurNs > 0) ? 1.0e9 / (double)s.defDurNs : 0;
+    FillVideoFields(v, (long)s.width, (long)s.height, secs, fps);
+
+    NSString *vc = MKVCodecName(s.videoCodec);
+    if (vc) v[@(F_VIDEOCODEC)] = vc;
+    if (s.hasAudio) {
+        NSString *ac = MKVCodecName(s.audioCodec);
+        if (ac) v[@(F_AUDIOCODEC)] = ac;
+        if (s.audioRate > 0)     v[@(F_SAMPLERATE)] = @((int)llround(s.audioRate));
+        if (s.audioChannels > 0) v[@(F_CHANNELS)]   = @((int)s.audioChannels);
+    }
+
+    if (v.count == 0) return nil;
+    MIInfo *info = [MIInfo new];
     info.values = v;
     return info;
 }
@@ -349,11 +653,18 @@ static MIInfo *ParseAV(NSURL *url, MICategory hint) {
 
     if (v.count == 0) return nil;
     MIInfo *info = [MIInfo new];
-    info.category = isVideo ? CAT_VIDEO : CAT_AUDIO;
     info.values = v;
     return info;
 }
 #pragma clang diagnostic pop
+
+/* Video containers macOS frameworks can't open, read by our own parsers.
+   These are fast (a bounded header read), unlike the AVFoundation path. */
+static BOOL IsOwnParsedVideo(NSString *ext) {
+    return [ext isEqualToString:@"avi"] ||
+           [ext isEqualToString:@"mkv"] ||
+           [ext isEqualToString:@"webm"];
+}
 
 /* Parse with caching keyed by path + mtime. Returns a (possibly empty) MIInfo
    so repeated probes of an unreadable file don't re-parse. */
@@ -383,8 +694,12 @@ static MIInfo *InfoForPath(NSString *path, MICategory cat) {
         switch (cat) {
             case CAT_IMAGE: info = ParseImage(url);       break;
             case CAT_AUDIO: info = ParseAV(url, cat);     break;
-            case CAT_VIDEO: info = [ext isEqualToString:@"avi"]
-                                       ? ParseAVI(url) : ParseAV(url, cat); break;
+            case CAT_VIDEO:
+                if ([ext isEqualToString:@"avi"])                    info = ParseAVI(url);
+                else if ([ext isEqualToString:@"mkv"] ||
+                         [ext isEqualToString:@"webm"])              info = ParseMKV(url);
+                else                                                 info = ParseAV(url, cat);
+                break;
             case CAT_PDF:   info = ParsePDF(url);         break;
             default: break;
         }
@@ -393,7 +708,6 @@ static MIInfo *InfoForPath(NSString *path, MICategory cat) {
     }
     if (!info) {                       /* sentinel: parsed, nothing usable */
         info = [MIInfo new];
-        info.category = cat;
         info.values = @{};
     }
     [gCache setObject:info forKey:key];
@@ -441,10 +755,10 @@ DLLEXPORT int __stdcall ContentGetValue(char *fileName, int field, int unit,
         if (cat == CAT_OTHER) return ft_fieldempty;
 
         /* AVFoundation parsing is the only slow path; defer it off the UI
-           thread when DC asks us to. (Our own AVI/RIFF reader is fast.) */
+           thread when DC asks us to. (Our own AVI/MKV parsers are fast.) */
         BOOL slow = (cat == CAT_AUDIO) ||
-                    (cat == CAT_VIDEO && ![path.pathExtension.lowercaseString
-                                            isEqualToString:@"avi"]);
+                    (cat == CAT_VIDEO &&
+                     !IsOwnParsedVideo(path.pathExtension.lowercaseString));
         if (slow && (flags & CONTENT_DELAYIFSLOW)) {
             struct stat st;
             long mtime = (stat(path.fileSystemRepresentation, &st) == 0)
