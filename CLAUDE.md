@@ -37,6 +37,15 @@ Per change, in order:
 - **Every PR / release** → `/code-review` (semantic, fresh subagents). Reviewing WIP
   micro-commits wastes tokens and breeds alert fatigue; review the accumulated diff.
 
+### Scope discipline — capture new/deferred work as issues
+When a request surfaces work beyond the change in hand — a new plugin idea, a deferred
+format/codec, a follow-up hardening, or a good idea you won't build now — **file it as a
+GitHub issue instead of silently expanding scope or letting it drop.** New-plugin ideas
+go on the roadmap (**#7**) as a proposal comment; a plugin-scoped enhancement gets its
+own `enhancement`-labelled issue. Capture the rationale and any options considered, not
+just a title. This keeps each PR focused, preserves the idea, and keeps the history
+honest. (Examples: AVI codec → #12; Matroska playback lister → roadmap #7.)
+
 ## Repo invariants
 - **Public + leak-clean by construction.** Genericize anything domain-revealing.
 - **One directory per plugin**, self-contained. Native, universal, tested, documented.
