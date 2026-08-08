@@ -5,11 +5,13 @@ built to a consistent engineering standard: **universal binaries** (Apple Silico
 Intel), **headless tests**, **CI**, and a layered **safety gate** before anything ships.
 
 So far that means a **Markdown preview/viewer plugin for Double Commander** (renders
-`.md` files in the F3 viewer, with a toggle back to raw text) and a **media-info
+`.md` files in the F3 viewer, with a toggle back to raw text), a **media-info
 plugin** that shows **image and video resolution, duration, and PDF page count as
-custom columns** — the things people reach for as a "Double Commander Markdown plugin"
-or an "image dimensions column on macOS". Both are WLX/WDX plugins using the Total
-Commander plugin ABI.
+custom columns**, and an **EPUB reader** that opens e-books in the viewer with a
+contents sidebar — the things people reach for as a "Double Commander Markdown
+plugin", an "image dimensions column on macOS", or an "EPUB viewer plugin for
+Double Commander" (of which there was no macOS one at all). All are WLX/WDX plugins
+using the Total Commander plugin ABI.
 
 This repo is also a worked example of how I build small native tools end-to-end —
 investigate the platform, prove the mechanism with a focused test before writing the
@@ -22,6 +24,7 @@ reproducible and documented.
 |--------|------|--------------|--------|
 | [`markdown-wlx`](markdown-wlx/) | WLX (lister) | Renders Markdown beautifully in DC's viewer (F3) — GitHub-style CSS, syntax highlighting, tables, task lists, **Mermaid diagrams**, **KaTeX math**, configurable light/dark. Toggle back to raw text anytime. | ✅ stable |
 | [`media-info-wdx`](media-info-wdx/) | WDX (content) | Shows media metadata in custom **columns** & tooltips — image/video **resolution**, audio/video **duration**, bitrate, codecs, PDF **page count**, plus an adaptive `Summary` field. Native ImageIO / AVFoundation / CGPDF; no deps, no network. | ✅ stable |
+| [`epub-wlx`](epub-wlx/) | WLX (lister) | Reads **EPUB e-books** in the viewer (F3) — contents sidebar from the EPUB 3 `nav` or EPUB 2 NCX, continuous reflowable text, cover, reading progress, adjustable text size, light/dark/sepia. Served straight out of the ZIP in-process: nothing unpacked to disk, nothing fetched from the network. | ✅ stable |
 
 More plugins will follow; the repo layout and the [contributor guide](CONTRIBUTING.md)
 are built for that.
