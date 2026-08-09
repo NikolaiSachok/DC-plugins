@@ -149,14 +149,21 @@ int main(int argc, char **argv) {
         check([runJS(web, @"document.querySelectorAll('.chapter [onerror], .chapter [onclick]').length") intValue] == 0,
               @"inline event handlers are stripped");
         check([runJS(web, @"[...document.querySelectorAll('.chapter [src]')]"
-                          @".every(e => e.getAttribute('src').startsWith('x-book:'))") boolValue],
-              @"every remaining resource points inside the book");
+                          @".every(e => /^(x-book:|data:)/.test(e.getAttribute('src')))") boolValue],
+              @"every remaining resource is in-book or inlined — none remote");
         check([runJS(web, @"[...document.querySelectorAll('.chapter a')]"
                           @".every(a => !a.getAttribute('href') ||"
                           @"           a.getAttribute('href').startsWith('x-book:'))") boolValue],
               @"outside links lose their href but keep their text");
         check([runJS(web, @"!!document.querySelector('.chapter a[data-link]')") boolValue],
               @"an in-book link is marked for in-page navigation");
+        check([runJS(web, @"(document.getElementById('inline-data')||{}).naturalWidth") intValue] == 48,
+              @"an inlined data: image is kept and renders");
+        check([runJS(web, @"document.querySelectorAll('.chapter style').length") intValue] == 0,
+              @"a chapter's in-body <style> is dropped, not applied to the reader");
+        check([str(runJS(web, @"getComputedStyle(document.getElementById('bar')).display"))
+                  isEqualToString:@"flex"],
+              @"the reader's own chrome survives a book that tries to restyle it");
 
         printf("\nreader chrome\n");
         check([runJS(web, @"getComputedStyle(document.documentElement)"
@@ -248,6 +255,16 @@ int main(int argc, char **argv) {
               @"the zipped FictionBook renders too");
         check([str(runJS(web, @"document.getElementById('book-title').textContent"))
                   isEqualToString:@"Блуждающая лампа"], @"same book, read out of the archive");
+
+        printf("\nreading position survives a round trip\n");
+        rc = ListLoadNext((__bridge HWND)win.contentView, pluginWin, (char *)three.UTF8String, 0);
+        check(rc == 0, @"the first book reopens");
+        check(waitFor(web, @"document.querySelectorAll('.chapter').length === 3 &&"
+                           @"!!document.getElementById('colophon')", 20),
+              @"it renders again");
+        pump(0.5);
+        check([runJS(web, @"window.scrollY > 0") boolValue],
+              @"it reopens where the reader left off, not at the top");
 
         printf("\nteardown\n");
         ListCloseWindow(pluginWin);

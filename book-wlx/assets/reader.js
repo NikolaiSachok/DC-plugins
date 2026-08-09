@@ -37,6 +37,7 @@
     tocLinks: [],
     userScrolled: false,
     restored: false,
+    loaded: false,
     fontSize: CFG.fontSize
   };
 
@@ -50,6 +51,10 @@
   function stripFragment(u) { var i = u.indexOf("#"); return i < 0 ? u : u.slice(0, i); }
   function fragmentOf(u) { var i = u.indexOf("#"); return i < 0 ? "" : u.slice(i + 1); }
   function inBook(u) { return typeof u === "string" && u.indexOf(CFG.base) === 0; }
+  /* A resource may come from inside the book, or be inlined in the markup — a
+   * base64 image is self-contained and reaches nothing. Everything else is
+   * dropped rather than fetched. */
+  function usableResource(u) { return inBook(u) || /^data:/i.test(u || ""); }
 
   /* Local names, so a prefixed document (`opf:manifest`, `fb:section`) parses
    * like an unprefixed one. */
@@ -136,7 +141,7 @@
   function setFontSize(px) {
     state.fontSize = Math.max(12, Math.min(34, px));
     applyTypography();
-    post({ t: "font", v: state.fontSize });
+    post({ t: "font", k: CFG.token, v: state.fontSize });
   }
 
   /* ---------- sanitising (EPUB) ---------- */
@@ -147,7 +152,12 @@
   var PURIFY = {
     USE_PROFILES: { html: true, svg: true, svgFilters: true, mathMl: true },
     ALLOWED_URI_REGEXP: URI_OK,
-    ADD_ATTR: ["colspan", "rowspan", "start", "reversed", "type"]
+    ADD_ATTR: ["colspan", "rowspan", "start", "reversed", "type"],
+    /* DOMPurify keeps <style> by default, and a chapter's in-body stylesheet
+     * would then apply to the whole document — including the reader's own bar
+     * and sidebar. Publisher CSS only ever reaches the page through
+     * injectPublisherCSS, which scopes it. */
+    FORBID_TAGS: ["style"]
   };
 
   /* Rewrite every reference in a chapter to an absolute in-book URL, so the
@@ -158,11 +168,11 @@
       attrs.forEach(function (a) {
         if (!el.hasAttribute(a)) return;
         var u = abs(el.getAttribute(a), chapterURL);
-        if (u && inBook(u)) el.setAttribute(a, u); else el.removeAttribute(a);
+        if (u && usableResource(u)) el.setAttribute(a, u); else el.removeAttribute(a);
       });
       if (el.hasAttributeNS(XLINK, "href")) {
         var xu = abs(el.getAttributeNS(XLINK, "href"), chapterURL);
-        if (xu && inBook(xu)) el.setAttributeNS(XLINK, "xlink:href", xu);
+        if (xu && usableResource(xu)) el.setAttributeNS(XLINK, "xlink:href", xu);
         else el.removeAttributeNS(XLINK, "href");
       }
       if (el.hasAttribute("srcset")) el.removeAttribute("srcset");
@@ -687,7 +697,11 @@
       a.href = "#";
       a.addEventListener("click", function (ev) {
         ev.preventDefault();
-        goTo(e.key, e.frag);
+        if (!goTo(e.key, e.frag)) {
+          a.classList.add("dead");
+          a.title = "This section is not in the book file.";
+          return;
+        }
         if (window.innerWidth <= 900) setTOC(false);
       });
       li.appendChild(a);
@@ -726,9 +740,13 @@
       state.userScrolled = true;
       scrollToElement(el);
       state.pending = null;
-    } else {
-      state.pending = { key: key, frag: frag };  /* not appended yet */
+      return true;
     }
+    /* Once the whole book is in, a target that still isn't there does not
+     * exist — say so rather than queueing a jump that can never happen. */
+    if (state.loaded) return false;
+    state.pending = { key: key, frag: frag };
+    return true;
   }
 
   function scrollToElement(el) {
@@ -762,7 +780,12 @@
     if (c) {
       var h = c.section.offsetHeight || 1;
       var r = Math.min(1, Math.max(0, (window.scrollY - c.section.offsetTop) / h));
-      post({ t: "pos", i: i, r: r });
+      /* Not before the remembered position has been applied: during the
+       * incremental load the page still sits at the top, and posting from
+       * there would overwrite where the reader actually left off. */
+      if (state.restored || state.userScrolled) {
+        post({ t: "pos", k: CFG.token, i: i, r: r });
+      }
       highlightTOC(c.key);
     }
   }
@@ -898,8 +921,16 @@
       });
     });
     return chain.then(function () {
+      state.loaded = true;
       addColophon(book);
       restorePosition();
+      /* A jump queued while the book was still arriving gets one last chance;
+       * if its target never appeared, drop it so later clicks still work. */
+      if (state.pending) {
+        var el = findTarget(state.pending.key, state.pending.frag);
+        if (el) scrollToElement(el);
+        state.pending = null;
+      }
       onScroll();
     });
   }).catch(function (err) {

@@ -65,6 +65,8 @@ CH2 = """<?xml version="1.0" encoding="utf-8"?>
   <p>Every page of the ledger was numbered and every number was wrong.</p>
   <table><tr><th>Day</th><th>Weight</th></tr><tr><td>Monday</td><td>14</td></tr></table>
   <ul><li>salt</li><li>tar</li><li>one lamp, wandering</li></ul>
+  <img id="inline-data" src="{datapng}" alt="inlined"/>
+  <style>body{{background:#f0f!important;color:#f0f!important}}#bar{{display:none!important}}</style>
 </body></html>
 """
 
@@ -263,6 +265,8 @@ def main(outdir):
     os.makedirs(outdir, exist_ok=True)
     cover = png(120, 180, (58, 74, 120))
     plate = png(64, 40, (200, 170, 120))
+    # Some books inline small artwork as a data: URI rather than as a file.
+    data_png = "data:image/png;base64," + base64.b64encode(png(48, 24, (90, 140, 90))).decode("ascii")
 
     three = os.path.join(outdir, "sample3.epub")
     write_epub(three, "OEBPS/content.opf", [
@@ -270,7 +274,7 @@ def main(outdir):
         ("OEBPS/nav.xhtml", NAV),
         ("OEBPS/style.css", STYLE),
         ("OEBPS/chapter1.xhtml", CH1),
-        ("OEBPS/chapter2.xhtml", CH2),
+        ("OEBPS/chapter2.xhtml", CH2.format(datapng=data_png)),
         ("OEBPS/chapter3.xhtml", CH3),
         ("OEBPS/images/cover.png", cover),
         ("OEBPS/images/plate.png", plate),

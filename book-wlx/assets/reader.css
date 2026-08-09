@@ -18,6 +18,8 @@
   --shadow:    rgba(60, 50, 35, .13);
   --bar:       #fbfaf7;
 
+  color-scheme: light;
+
   --font-size:   18px;
   --line-height: 1.7;
   --measure:     680px;
@@ -28,12 +30,14 @@
 }
 
 :root[data-theme="sepia"] {
+  color-scheme: light;
   --bg: #f4ecd8; --fg: #443a29; --muted: #8d8069; --rule: #e0d4b8;
   --panel: #ece1c6; --panel-fg: #5a4e39; --accent: #8a5a24;
   --shadow: rgba(80, 62, 30, .16); --bar: #f4ecd8;
 }
 
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --bg: #16181c; --fg: #c8ccd3; --muted: #79808b; --rule: #262a31;
   --panel: #10131a; --panel-fg: #aab1bb; --accent: #cf9d5c;
   --shadow: rgba(0, 0, 0, .45); --bar: #16181c;
@@ -41,6 +45,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root[data-theme="auto"] {
+    color-scheme: dark;
     --bg: #16181c; --fg: #c8ccd3; --muted: #79808b; --rule: #262a31;
     --panel: #10131a; --panel-fg: #aab1bb; --accent: #cf9d5c;
     --shadow: rgba(0, 0, 0, .45); --bar: #16181c;
@@ -124,6 +129,9 @@ html, body {
 }
 #toc a:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); }
 #toc a.current { color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
+/* A contents entry whose target isn't in the file — say so rather than
+ * silently doing nothing when it is clicked. */
+#toc a.dead { opacity: .45; text-decoration: line-through; cursor: default; }
 #toc li[data-depth="0"] > a { padding-left: 16px; }
 #toc li[data-depth="1"] > a { padding-left: 32px; font-size: 12.5px; opacity: .92; }
 #toc li[data-depth="2"] > a { padding-left: 46px; font-size: 12px;  opacity: .85; }

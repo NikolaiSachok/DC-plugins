@@ -207,8 +207,31 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
  * `<token>` changes on every load so a reused web view can never serve a
  * previous book's cached resource under the same URL.
  */
+/*
+ * Owns a ZipArchive for exactly as long as someone is still reading from it.
+ * Entries are inflated on a background queue, so the archive cannot be a bare
+ * pointer the main thread frees on the next file: a block that captures this
+ * object keeps the mapping alive until it finishes.
+ */
+@interface BKArchive : NSObject
+@property (nonatomic, readonly) ZipArchive *zip;
+- (instancetype)initWithPath:(NSString *)path;
+@end
+
+@implementation BKArchive
+- (instancetype)initWithPath:(NSString *)path {
+    self = [super init];
+    if (self) {
+        _zip = path.length ? ZipOpen(path.fileSystemRepresentation) : NULL;
+        if (!_zip) return nil;
+    }
+    return self;
+}
+- (void)dealloc { if (_zip) ZipClose(_zip); }
+@end
+
 @interface BKSchemeHandler : NSObject <WKURLSchemeHandler>
-@property (nonatomic, assign) ZipArchive *zip;         /* not owned; see BKView */
+@property (nonatomic, strong) BKArchive  *archive;     /* keeps the ZIP mapped */
 @property (nonatomic, strong) NSData     *fb2;         /* the whole FB2 document */
 @property (nonatomic, copy)   NSString   *shellHTML;
 @property (nonatomic, copy)   NSString   *token;
@@ -247,7 +270,11 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
 - (void)webView:(WKWebView *)webView startURLSchemeTask:(id<WKURLSchemeTask>)task {
     [self.liveTasks addObject:task];
 
-    NSString *path = task.request.URL.path ?: @"";
+    /* The still-encoded path: NSURL.path decodes once already, and decoding a
+     * second time would corrupt an entry whose name contains a literal `%`. */
+    NSURLComponents *parts = [NSURLComponents componentsWithURL:task.request.URL
+                                       resolvingAgainstBaseURL:NO];
+    NSString *path = parts.percentEncodedPath ?: @"";
     if ([path hasPrefix:@"/"]) path = [path substringFromIndex:1];
 
     /* Strip the per-load token; anything under a stale token is gone. */
@@ -282,9 +309,10 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
     }
 
     /* A book resource. Inflating happens off the main thread so a large image
-     * never stalls scrolling. */
-    ZipArchive *zip = self.zip;
-    if (!zip) {
+     * never stalls scrolling; the block holds the archive so switching files
+     * mid-read cannot pull the mapping out from under it. */
+    BKArchive *archive = self.archive;
+    if (!archive) {
         [self finishTask:task data:nil mime:@"text/plain"];
         return;
     }
@@ -292,7 +320,7 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
     NSString *mime  = MimeForPath(entry);
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
         size_t len = 0;
-        unsigned char *bytes = ZipCopyEntry(zip, entry.UTF8String, &len);
+        unsigned char *bytes = ZipCopyEntry(archive.zip, entry.UTF8String, &len);
         NSData *data = bytes ? [NSData dataWithBytesNoCopy:bytes length:len freeWhenDone:YES]
                              : nil;
         [self finishTask:task data:data mime:mime];
@@ -320,7 +348,7 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
 @property (nonatomic, strong) BKSchemeHandler *handler;
 @property (nonatomic, strong) BKMessageSink   *sink;
 @property (nonatomic, copy)   NSString        *currentPath;
-@property (nonatomic, assign) ZipArchive      *zip;
+@property (nonatomic, copy)   NSString        *currentToken;
 @property (nonatomic, assign) NSUInteger       loadCounter;
 /* Reading position per book: chapter index + fraction scrolled through it. */
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSDictionary *> *positionByPath;
@@ -335,7 +363,11 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
     NSDictionary *msg = message.body;
     NSString *type = [msg[@"t"] description];
 
-    if ([type isEqualToString:@"pos"] && v.currentPath) {
+    /* Messages carry the token of the load that produced them. A message still
+     * in flight from the previous book would otherwise be filed under the new
+     * book's path and send the reader to a position it never reached. */
+    if ([type isEqualToString:@"pos"] && v.currentPath &&
+        [[msg[@"k"] description] isEqualToString:v.currentToken ?: @""]) {
         v.positionByPath[v.currentPath] = @{ @"i": msg[@"i"] ?: @0,
                                              @"r": msg[@"r"] ?: @0 };
     } else if ([type isEqualToString:@"font"]) {
@@ -395,6 +427,7 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
         @"tocOpen":      @(CfgBool(cfg, @"toc")),
         @"showVersion":  @(CfgBool(cfg, @"showversion")),
         @"version":      @BKV_VERSION,
+        @"token":        token,
         @"fileName":     fileName ?: @"",
         @"position":     pos ?: @{},
         @"format":       format ?: @"epub",
@@ -466,15 +499,18 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
         HTMLEscape(reason), HTMLEscape(fileName)];
 }
 
-/* First entry that looks like a FictionBook document, for `.fbz` / zipped FB2. */
-static NSString *FB2EntryInZip(ZipArchive *zip) {
+/* First entry that looks like a FictionBook document, for `.fbz` / zipped FB2.
+ * Compared as raw bytes: ZIP entry names are not required to be UTF-8, and
+ * Russian FictionBook archives are routinely written with CP866/CP1251 names,
+ * which would not survive a trip through NSString. */
+static const char *FB2EntryInZip(ZipArchive *zip) {
     for (size_t i = 0; i < ZipEntryCount(zip); i++) {
         const char *name = ZipEntryName(zip, i);
         if (!name) continue;
-        NSString *entry = [NSString stringWithUTF8String:name];
-        if ([[entry pathExtension] caseInsensitiveCompare:@"fb2"] == NSOrderedSame) return entry;
+        size_t len = strlen(name);
+        if (len >= 4 && strcasecmp(name + len - 4, ".fb2") == 0) return name;
     }
-    return nil;
+    return NULL;
 }
 
 /* FictionBook is a bare XML file; the root element names it. Only the head of
@@ -493,8 +529,9 @@ static BOOL LooksLikeFB2(NSData *data) {
  * mis-named book therefore still opens.
  */
 - (BOOL)loadBookAtPath:(NSString *)path {
-    if (self.zip) { ZipClose(self.zip); self.zip = NULL; }
-    self.handler.zip = NULL;
+    /* The previous archive is simply released — any background read still in
+     * flight holds its own reference and finishes against a live mapping. */
+    self.handler.archive = nil;
     self.handler.fb2 = nil;
     self.currentPath = path;
     self.loadCounter++;
@@ -502,35 +539,32 @@ static BOOL LooksLikeFB2(NSData *data) {
     NSString *token = [NSString stringWithFormat:@"b%lu", (unsigned long)self.loadCounter];
     NSString *fileName = [path lastPathComponent] ?: @"";
     self.handler.token = token;
+    self.currentToken = token;
 
     NSString *format = nil;
     NSString *reason = nil;
 
-    ZipArchive *zip = ZipOpen(path.fileSystemRepresentation);
-    if (zip) {
-        NSString *fb2Entry = nil;
-        if (ZipHasEntry(zip, "META-INF/container.xml")) {
+    BKArchive *archive = path.length ? [[BKArchive alloc] initWithPath:path] : nil;
+    if (archive) {
+        const char *fb2Entry = NULL;
+        if (ZipHasEntry(archive.zip, "META-INF/container.xml")) {
             format = @"epub";
-            self.zip = zip;
-            self.handler.zip = zip;
-        } else if ((fb2Entry = FB2EntryInZip(zip))) {
+            self.handler.archive = archive;
+        } else if ((fb2Entry = FB2EntryInZip(archive.zip))) {
             size_t len = 0;
-            unsigned char *bytes = ZipCopyEntry(zip, fb2Entry.UTF8String, &len);
+            unsigned char *bytes = ZipCopyEntry(archive.zip, fb2Entry, &len);
             if (bytes) {
                 format = @"fb2";
                 self.handler.fb2 = [NSData dataWithBytesNoCopy:bytes length:len freeWhenDone:YES];
             } else {
                 reason = @"The FictionBook file inside this archive could not be decompressed.";
             }
-            ZipClose(zip);   /* everything needed is already in memory */
-            zip = NULL;
+            /* Everything needed is in memory; the archive can go. */
         } else {
             reason = @"This ZIP is neither an EPUB (no META-INF/container.xml) "
                      @"nor a zipped FictionBook.";
-            ZipClose(zip);
-            zip = NULL;
         }
-    } else {
+    } else if (path.length) {
         NSData *raw = [NSData dataWithContentsOfFile:path
                                              options:NSDataReadingMappedIfSafe
                                                error:NULL];
@@ -541,6 +575,8 @@ static BOOL LooksLikeFB2(NSData *data) {
             reason = raw ? @"This is neither an EPUB container nor a FictionBook document."
                          : @"The file could not be read.";
         }
+    } else {
+        reason = @"No file name was given.";
     }
 
     self.handler.shellHTML = format
@@ -559,19 +595,28 @@ static BOOL LooksLikeFB2(NSData *data) {
 
 - (void)dealloc {
     [_web.configuration.userContentController removeScriptMessageHandlerForName:@"dcbook"];
-    _handler.zip = NULL;
-    if (_zip) ZipClose(_zip);
+    _handler.archive = nil;   /* released once the last background read is done */
 }
 
 @end
 
 #pragma mark - WLX exported API
 
+/* Double Commander hands us a filesystem byte string, which is not necessarily
+ * valid UTF-8 — a volume with legacy-codepage names produces one that isn't.
+ * `stringWithUTF8String:` returns nil for those; this always round-trips. */
+static NSString *PathFromABI(const char *cpath) {
+    if (!cpath) return @"";
+    NSString *path = [[NSFileManager defaultManager]
+                         stringWithFileSystemRepresentation:cpath length:strlen(cpath)];
+    return path ?: @"";
+}
+
 static BKView *MakeAndLoad(HWND ParentWin, const char *FileToLoad) {
     NSView *parent = (__bridge NSView *)ParentWin;
     NSRect frame = parent ? parent.bounds : NSMakeRect(0, 0, 800, 600);
     BKView *view = [[BKView alloc] initWithFrame:frame];
-    NSString *path = FileToLoad ? [NSString stringWithUTF8String:FileToLoad] : @"";
+    NSString *path = PathFromABI(FileToLoad);
     /* A malformed book still gets a view — it shows why it couldn't be opened,
      * which beats falling through to a hex dump of the ZIP. */
     [view loadBookAtPath:path];
@@ -599,7 +644,7 @@ int __stdcall ListLoadNext(HWND ParentWin, HWND PluginWin, char *FileToLoad, int
     (void)ParentWin; (void)ShowFlags;
     BKView *view = (__bridge BKView *)PluginWin;
     if (![view isKindOfClass:[BKView class]]) return LISTPLUGIN_ERROR;
-    NSString *path = FileToLoad ? [NSString stringWithUTF8String:FileToLoad] : @"";
+    NSString *path = PathFromABI(FileToLoad);
     __block BOOL ok = NO;
     if ([NSThread isMainThread]) {
         ok = [view loadBookAtPath:path];
