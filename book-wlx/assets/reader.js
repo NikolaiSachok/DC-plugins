@@ -490,6 +490,18 @@
     return t ? textOf(t).replace(/\s+/g, " ") : null;
   }
 
+  /* Plenty of FB2 in the wild — anything produced by a converter, for one —
+   * has sections but no <title> elements at all. Falling back to the section's
+   * opening line gives those books a usable table of contents instead of none. */
+  function fb2SectionLabel(section) {
+    var title = fb2SectionTitle(section);
+    if (title) return title;
+    var first = kids(section, "subtitle")[0] || kids(section, "p")[0];
+    var text = textOf(first).replace(/\s+/g, " ");
+    if (text.length < 2) return null;
+    return text.length > 70 ? text.slice(0, 69).trimEnd() + "…" : text;
+  }
+
   /* Contents: every titled section at its nesting depth, plus the title a body
    * carries directly — which is how the notes body announces itself. */
   function buildFB2TOC(book) {
@@ -504,8 +516,8 @@
         }
         if (node.localName !== "section") return;
         (function walk(section, depth, path) {
-          var title = fb2SectionTitle(section);
-          if (title) out.push({ label: title, depth: depth, key: key, frag: path });
+          var label = fb2SectionLabel(section);
+          if (label) out.push({ label: label, depth: depth, key: key, frag: path });
           kids(section, "section").forEach(function (child, i) {
             walk(child, depth + 1, path + "-" + i);
           });
