@@ -44,6 +44,38 @@ jobs:
       # The WKWebView render + Esc tests under test/ are GUI-bound and run
       # locally (see markdown-wlx/README.md), not on the headless CI runner.
 
+      - name: Build book-wlx
+        working-directory: book-wlx
+        run: ./build.sh
+
+      - name: Assert universal binary (arm64 + x86_64)
+        working-directory: book-wlx
+        run: |
+          archs=$(lipo -archs build/BookView.wlx)
+          echo "archs: $archs"
+          echo "$archs" | grep -q arm64
+          echo "$archs" | grep -q x86_64
+
+      - name: Assert WLX entry points are exported
+        working-directory: book-wlx
+        run: |
+          for sym in _ListLoad _ListLoadNext _ListCloseWindow \
+                     _ListGetDetectString _ListSetDefaultParams; do
+            nm -gU build/BookView.wlx | grep -q " T $sym" \
+              || { echo "missing export: $sym"; exit 1; }
+          done
+          echo "all WLX exports present ✓"
+
+      # The ZIP/OCF reader is not GUI-bound, so its harness runs here against
+      # generated sample books. The rendering, TOC and sanitising assertions in
+      # test/test_host.m need a WebKit-capable session and run locally.
+      - name: Run book-wlx ZIP reader harness
+        working-directory: book-wlx
+        run: |
+          python3 test/make_samples.py build/samples
+          clang -O1 -Wall -Wextra -o build/zip_test test/zip_test.c zipreader.c -lz
+          ./build/zip_test build/samples
+
       - name: Build media-info-wdx
         working-directory: media-info-wdx
         run: ./build.sh

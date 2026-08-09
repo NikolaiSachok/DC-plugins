@@ -1,0 +1,314 @@
+/*
+ * BookView reader stylesheet.
+ *
+ * Book content is rendered with these reading styles rather than the
+ * publisher's own CSS, so every book gets consistent typography and honours the
+ * chosen theme. (Set `publishercss = 1` in BookView.ini to load the book's own
+ * stylesheets on top instead.)
+ */
+
+:root {
+  --bg:        #fbfaf7;
+  --fg:        #26221c;
+  --muted:     #8c8578;
+  --rule:      #e7e2d8;
+  --panel:     #f3f0e8;
+  --panel-fg:  #4a443a;
+  --accent:    #9a6434;
+  --shadow:    rgba(60, 50, 35, .13);
+  --bar:       #fbfaf7;
+
+  color-scheme: light;
+
+  --font-size:   18px;
+  --line-height: 1.7;
+  --measure:     680px;
+  --align:       start;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua",
+           Georgia, "Times New Roman", serif;
+  --ui: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+}
+
+:root[data-theme="sepia"] {
+  color-scheme: light;
+  --bg: #f4ecd8; --fg: #443a29; --muted: #8d8069; --rule: #e0d4b8;
+  --panel: #ece1c6; --panel-fg: #5a4e39; --accent: #8a5a24;
+  --shadow: rgba(80, 62, 30, .16); --bar: #f4ecd8;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #16181c; --fg: #c8ccd3; --muted: #79808b; --rule: #262a31;
+  --panel: #10131a; --panel-fg: #aab1bb; --accent: #cf9d5c;
+  --shadow: rgba(0, 0, 0, .45); --bar: #16181c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"] {
+    color-scheme: dark;
+    --bg: #16181c; --fg: #c8ccd3; --muted: #79808b; --rule: #262a31;
+    --panel: #10131a; --panel-fg: #aab1bb; --accent: #cf9d5c;
+    --shadow: rgba(0, 0, 0, .45); --bar: #16181c;
+  }
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--ui);
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ---------- top bar ---------- */
+
+#progress {
+  position: fixed; inset: 0 0 auto 0; height: 2px; z-index: 40;
+  background: transparent;
+}
+#progress-bar {
+  height: 100%; width: 0; background: var(--accent);
+  transition: width .12s linear;
+}
+
+#bar {
+  position: fixed; inset: 0 0 auto 0; z-index: 30;
+  display: flex; align-items: center; gap: 10px;
+  height: 40px; padding: 0 12px; box-sizing: border-box;
+  /* Solid, not translucent: a backdrop blur leaves book text ghosting through
+   * the title on some compositing paths, and a reader's chrome must never be
+   * ambiguous about where the page ends. */
+  background: var(--bar);
+  border-bottom: 1px solid var(--rule);
+  font-size: 12px; color: var(--muted);
+  user-select: none;
+}
+
+#bar button {
+  appearance: none; border: 0; background: transparent; cursor: pointer;
+  color: var(--muted); border-radius: 6px; padding: 4px 7px;
+  font: 12px/1 var(--ui); transition: background .12s, color .12s;
+}
+#bar button:hover { background: color-mix(in srgb, var(--fg) 9%, transparent); color: var(--fg); }
+#bar button svg { display: block; fill: currentColor; }
+
+#bar-title {
+  flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px;
+  white-space: nowrap; overflow: hidden;
+}
+#book-title  { color: var(--fg); font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+#book-author { flex: none; opacity: .75; }
+#book-author:not(:empty)::before { content: "· "; }
+
+#bar-tools { display: flex; align-items: center; gap: 2px; flex: none; }
+#font-down, #font-up { font-size: 13px; min-width: 26px; }
+#percent { margin-left: 8px; min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---------- table of contents ---------- */
+
+#toc {
+  position: fixed; top: 40px; bottom: 0; left: 0; width: 274px; z-index: 20;
+  box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain;
+  background: var(--panel); border-right: 1px solid var(--rule);
+  transform: translateX(-100%); transition: transform .18s ease;
+  padding-bottom: 24px;
+}
+:root.toc-open #toc { transform: none; }
+
+#toc-head {
+  position: sticky; top: 0; z-index: 1;
+  padding: 12px 18px 8px; font-size: 11px; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--muted); background: var(--panel);
+}
+#toc ol { list-style: none; margin: 0; padding: 0; }
+#toc a {
+  display: block; padding: 5px 18px 5px 0; color: var(--panel-fg);
+  text-decoration: none; font-size: 13px; line-height: 1.45;
+  border-left: 2px solid transparent;
+}
+#toc a:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); }
+#toc a.current { color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
+/* A contents entry whose target isn't in the file — say so rather than
+ * silently doing nothing when it is clicked. */
+#toc a.dead { opacity: .45; text-decoration: line-through; cursor: default; }
+#toc li[data-depth="0"] > a { padding-left: 16px; }
+#toc li[data-depth="1"] > a { padding-left: 32px; font-size: 12.5px; opacity: .92; }
+#toc li[data-depth="2"] > a { padding-left: 46px; font-size: 12px;  opacity: .85; }
+#toc li[data-depth="3"] > a { padding-left: 60px; font-size: 12px;  opacity: .8; }
+#toc.empty::after {
+  content: "This book has no table of contents.";
+  display: block; padding: 4px 18px; font-size: 12px; color: var(--muted);
+}
+
+/* Below this width the sidebar floats over the text instead of pushing it. */
+#scrim {
+  position: fixed; inset: 40px 0 0 0; z-index: 15; background: rgba(0, 0, 0, .28);
+  opacity: 0; pointer-events: none; transition: opacity .18s;
+}
+@media (max-width: 900px) {
+  :root.toc-open #scrim { opacity: 1; pointer-events: auto; }
+  #toc { box-shadow: 0 0 26px var(--shadow); }
+}
+@media (min-width: 901px) {
+  :root.toc-open #book { padding-left: 274px; }
+}
+
+/* ---------- book ---------- */
+
+#book {
+  padding-top: 40px;
+  transition: padding-left .18s ease;
+}
+
+#status {
+  max-width: var(--measure); margin: 0 auto; padding: 48px 28px;
+  color: var(--muted); font-size: 13px;
+}
+
+.chapter {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 30px 28px;
+  box-sizing: border-box;
+  font-family: var(--serif);
+  font-size: var(--font-size);
+  line-height: var(--line-height);
+  text-align: var(--align);
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  overflow-wrap: break-word;
+}
+.chapter + .chapter { border-top: 1px solid var(--rule); }
+
+/* Print convention: a run of paragraphs is set solid and indented rather than
+ * spaced apart. The paragraph that opens a chapter — or follows a heading or
+ * any block — stays flush, exactly as a printed book sets it. */
+.chapter p { margin: 0; text-indent: 1.4em; }
+.chapter > p:first-child,
+.chapter h1 + p, .chapter h2 + p, .chapter h3 + p,
+.chapter h4 + p, .chapter h5 + p, .chapter h6 + p,
+.chapter hr + p, .chapter figure + p, .chapter blockquote + p,
+.chapter ul + p, .chapter ol + p, .chapter table + p, .chapter pre + p,
+.chapter div + p, .chapter img + p, .chapter section + p { text-indent: 0; }
+
+.chapter h1, .chapter h2, .chapter h3,
+.chapter h4, .chapter h5, .chapter h6 {
+  font-family: var(--ui); font-weight: 650; line-height: 1.25;
+  margin: 1.9em 0 .7em; text-align: start; text-indent: 0; hyphens: manual;
+}
+.chapter h1 { font-size: 1.55em; }
+.chapter h2 { font-size: 1.3em; }
+.chapter h3 { font-size: 1.12em; }
+.chapter h4, .chapter h5, .chapter h6 { font-size: 1em; }
+.chapter > :first-child { margin-top: 0; }
+
+.chapter a { color: var(--accent); text-decoration: none; }
+.chapter a:hover { text-decoration: underline; }
+.chapter em, .chapter i { font-style: italic; }
+.chapter strong, .chapter b { font-weight: 650; }
+.chapter sup, .chapter sub { font-size: .72em; line-height: 0; }
+
+.chapter blockquote {
+  margin: 1.2em 0; padding: 0 0 0 1.2em;
+  border-left: 2px solid var(--rule); color: var(--panel-fg); font-style: italic;
+}
+.chapter blockquote p { text-indent: 0; }
+.chapter blockquote p + p { margin-top: .6em; }
+
+.chapter ul, .chapter ol { margin: .8em 0 1em; padding-left: 1.6em; }
+.chapter li { margin: .25em 0; text-indent: 0; }
+
+.chapter img, .chapter svg, .chapter image {
+  max-width: 100%; height: auto; display: block; margin: 1.2em auto;
+}
+.chapter figure { margin: 1.4em 0; }
+.chapter figcaption {
+  font-family: var(--ui); font-size: .78em; color: var(--muted);
+  text-align: center; margin-top: .5em;
+}
+
+.chapter hr {
+  border: 0; height: 1px; background: var(--rule); margin: 2em auto; width: 45%;
+}
+
+.chapter pre {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  padding: 12px 14px; border-radius: 6px; overflow-x: auto;
+  font: .82em/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-indent: 0;
+}
+.chapter code {
+  font: .86em/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.chapter pre code { font-size: 1em; }
+
+.chapter table {
+  border-collapse: collapse; margin: 1.3em 0; font-size: .9em; width: 100%;
+}
+.chapter th, .chapter td {
+  border: 1px solid var(--rule); padding: 6px 10px; text-align: start; text-indent: 0;
+}
+.chapter th { background: color-mix(in srgb, var(--fg) 5%, transparent); font-weight: 650; }
+
+/* ---------- FictionBook structures ---------- */
+
+.chapter .fb2-section + .fb2-section { margin-top: 1.6em; }
+.chapter .anchor { display: inline; }
+
+.chapter .epigraph {
+  margin: 1.4em 0 1.4em auto; max-width: 78%;
+  padding: 0 0 0 1.1em; border-left: 2px solid var(--rule);
+  font-style: italic; color: var(--panel-fg);
+}
+.chapter .cite {
+  margin: 1.3em 0; padding: 0 0 0 1.2em;
+  border-left: 2px solid var(--rule); color: var(--panel-fg);
+}
+.chapter .epigraph p, .chapter .cite p { text-indent: 0; }
+.chapter .text-author {
+  margin: .4em 0 0; text-indent: 0; text-align: end;
+  font-style: normal; font-size: .88em; color: var(--muted);
+}
+
+.chapter .poem { margin: 1.4em 0; font-style: italic; }
+.chapter .stanza + .stanza { margin-top: 1em; }
+.chapter .verse { text-indent: 0; padding-left: 1.6em; }
+
+.chapter .annotation {
+  margin: 0 0 1.8em; padding: 0 0 1.2em;
+  border-bottom: 1px solid var(--rule); color: var(--panel-fg); font-size: .95em;
+}
+.chapter .annotation p { text-indent: 0; margin-bottom: .5em; }
+.chapter .date { text-indent: 0; color: var(--muted); font-size: .88em; }
+
+/* Footnote markers read as references, not as body links. */
+.chapter a.note-ref {
+  font-size: .75em; vertical-align: super; line-height: 0;
+  padding: 0 .1em; text-decoration: none;
+}
+.chapter.notes { font-size: .92em; color: var(--panel-fg); }
+.chapter.notes p { text-indent: 0; margin-bottom: .5em; }
+
+.chapter .read-error { color: var(--muted); font-style: italic; text-indent: 0; }
+
+/* The cover, when the book has one, gets the viewport to itself. */
+#cover { padding: 24px 28px 8px; text-align: center; }
+#cover img {
+  max-width: min(100%, 360px); max-height: 74vh; height: auto;
+  margin: 0 auto; border-radius: 3px; box-shadow: 0 6px 26px var(--shadow);
+}
+
+#colophon {
+  max-width: var(--measure); margin: 0 auto; padding: 26px 28px 60px;
+  color: var(--muted); font-size: 12px; text-align: center;
+  border-top: 1px solid var(--rule);
+}
+
+#version {
+  position: fixed; right: 8px; bottom: 6px; z-index: 25;
+  font: 11px/1.4 var(--ui); color: var(--muted);
+  background: color-mix(in srgb, var(--fg) 10%, transparent);
+  padding: 2px 8px; border-radius: 10px; opacity: .3;
+  transition: opacity .15s; user-select: none; pointer-events: none;
+}

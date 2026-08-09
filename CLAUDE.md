@@ -69,14 +69,37 @@ history honest. (Examples: AVI codec → #12; Matroska playback lister → #14.)
   **`CFBridgingRetain` / `CFBridgingRelease`** under ARC.
 - DC uses the **first** registered plugin whose `DetectString` matches → register a
   specific plugin **before** any catch-all (the bundled MacPreview uses `(EXT!="")`).
+- `WKWebView` **suspends `requestAnimationFrame`** while its window is occluded or
+  off-screen. Never gate progress, throttling, or incremental loading on a frame
+  callback — an rAF-throttled handler that sets a "pending" flag never clears it and
+  the view freezes. Use `setTimeout` for yielding and throttling.
+
+### Esc must close the viewer — every WLX plugin, every time
+`WKWebView` swallows the Escape key, so a viewer plugin that does nothing about it
+leaves DC's F3 viewer unclosable (the user has to switch to Text mode first). This
+has now bitten **every** web-view-based lister here, so treat it as part of the ABI,
+not as a bug to rediscover:
+
+1. Subclass `WKWebView` and override `-keyDown:`. On keyCode 53, move first responder
+   off the web view (the parent DC view is `webView.superview.superview`), then
+   **re-post a fresh Escape `NSEvent`** with `[NSApp postEvent:… atStart:YES]` so
+   `NSApplication` dispatches it and LCL closes the viewer. Pass every other key
+   through to `super`. Copy the implementation from `markdown-wlx/MarkdownView.m` or
+   `book-wlx/BookView.m` — it is the same in both.
+2. Ship `test/esc_verify.m` (a parent view that stands in for DC and records the
+   re-posted event) and keep it green.
+3. **That harness is a regression net, not proof.** The first Esc fix passed a mock
+   and still failed in the app. Before shipping, press Esc in the real Double
+   Commander with the plugin registered.
 
 ## Per-plugin checklist (for a new plugin, e.g. image-view)
 Each plugin directory owns: `build.sh` (universal + ad-hoc sign), `install.sh`
 (idempotent, prebuilt-bundle aware, backs up `doublecmd.xml`), `register_plugin.py` if
-it edits config, `test/` (real-artifact harnesses), `assets/` + `THIRD_PARTY_LICENSES.md`,
-`README.md`, a `VERSION` constant + on-screen version surface, and `CHANGELOG.md`
-entries. Add a row to the root `README.md` table and extend `.github/workflows/` (CI +
-release) for the new plugin. See **docs/ADDING-A-PLUGIN.md**.
+it edits config, `test/` (real-artifact harnesses — including `esc_verify.m` for any
+viewer), `assets/` + `THIRD_PARTY_LICENSES.md`, `README.md`, a `VERSION` constant +
+on-screen version surface, and `CHANGELOG.md` entries. Add a row to the root
+`README.md` table and extend `.github/workflows/` (CI + release) for the new plugin.
+See **docs/ADDING-A-PLUGIN.md**.
 
 ## Pointers
 - **CONTRIBUTING.md** — build/test loop, layout convention, the pre-commit hook.

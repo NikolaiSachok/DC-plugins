@@ -1,0 +1,39 @@
+; BookView plugin settings (optional).
+;
+; Copy this file to "BookView.ini" next to BookView.wlx (or use the ini path
+; Double Commander assigns the plugin) and edit. Changes apply the next time you
+; open a book — no restart needed. Delete the file to return to defaults.
+
+[BookView]
+
+; Color theme: auto (follow macOS), light, dark, or sepia.
+theme = auto
+
+; Base text size in pixels. The A- / A+ buttons (and the - / + keys) override
+; this for the rest of the session.
+fontsize = 18
+
+; Width of the text column in pixels. Around 60–75 characters per line reads
+; best; 680 is roughly that at the default size.
+maxwidth = 680
+
+; Line spacing, as a multiple of the font size.
+lineheight = 1.7
+
+; Justify text to both margins (1/0). Off by default — with hyphenation on,
+; ragged-right avoids the rivers that justified web text tends to produce.
+justify = 0
+
+; Open the contents sidebar automatically when the viewer is wide enough (1/0).
+; Toggle it any time with the button in the bar or the "t" key.
+toc = 1
+
+; Load the book's own stylesheets instead of the reader's typography (1/0).
+; Off by default: publisher CSS usually hard-codes black-on-white and fixed
+; sizes, which fights the theme. Turn it on for books whose layout matters
+; (comics, poetry, heavily designed pages). EPUB only — a FictionBook carries
+; no stylesheet.
+publishercss = 0
+
+; Show a faint plugin-version badge in the bottom-right corner (1/0).
+showversion = 1
