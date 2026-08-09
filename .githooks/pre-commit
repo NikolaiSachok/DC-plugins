@@ -43,11 +43,11 @@ if printf '%s\n' "$staged" | grep -qE '^markdown-wlx/(MarkdownView\.m|listplug\.
     echo "[pre-commit] markdown-wlx OK (universal, all ABI exports present)"
 fi
 
-# --- epub-wlx: build + verify universal ABI only if its source changed ---
-if printf '%s\n' "$staged" | grep -qE '^epub-wlx/(EpubView\.m|zipreader\.[ch]|listplug\.h|build\.sh)$'; then
-    echo "[pre-commit] epub-wlx source staged -> building"
-    ( cd epub-wlx && ./build.sh >/dev/null )
-    wlx="epub-wlx/build/EpubView.wlx"
+# --- book-wlx: build + verify universal ABI only if its source changed ---
+if printf '%s\n' "$staged" | grep -qE '^book-wlx/(BookView\.m|zipreader\.[ch]|listplug\.h|build\.sh)$'; then
+    echo "[pre-commit] book-wlx source staged -> building"
+    ( cd book-wlx && ./build.sh >/dev/null )
+    wlx="book-wlx/build/BookView.wlx"
 
     info=$(file "$wlx")
     case "$info" in
@@ -62,13 +62,13 @@ if printf '%s\n' "$staged" | grep -qE '^epub-wlx/(EpubView\.m|zipreader\.[ch]|li
     done
 
     # The ZIP/OCF reader is headless, so its harness is cheap enough to gate on.
-    ( cd epub-wlx \
-      && python3 test/make_sample_epub.py build/samples >/dev/null \
+    ( cd book-wlx \
+      && python3 test/make_samples.py build/samples >/dev/null \
       && clang -O1 -o build/zip_test test/zip_test.c zipreader.c -lz \
       && ./build/zip_test build/samples >/dev/null ) \
-        || { echo "[pre-commit] FAIL: epub-wlx zipreader harness"; exit 1; }
+        || { echo "[pre-commit] FAIL: book-wlx zipreader harness"; exit 1; }
 
-    echo "[pre-commit] epub-wlx OK (universal, all ABI exports present, zipreader green)"
+    echo "[pre-commit] book-wlx OK (universal, all ABI exports present, zipreader green)"
 fi
 
 # --- media-info-wdx: build + verify universal ABI only if its source changed ---

@@ -1,9 +1,9 @@
 #!/bin/zsh
-# Build EpubView.wlx for Double Commander (macOS, universal: arm64 + x86_64).
+# Build BookView.wlx for Double Commander (macOS, universal: arm64 + x86_64).
 set -e
 cd "$(dirname "$0")"
 
-OUT="build/EpubView.wlx"
+OUT="build/BookView.wlx"
 ARCHS=(-arch arm64 -arch x86_64)
 COMMON=(-mmacosx-version-min=11.0 -fvisibility=hidden -O2)
 
@@ -14,14 +14,14 @@ mkdir -p build/obj
 echo "==> Compiling zipreader.c"
 clang -c $ARCHS $COMMON -std=c11 -Wall -Wextra -o build/obj/zipreader.o zipreader.c
 
-echo "==> Compiling EpubView.m"
-clang -c $ARCHS $COMMON -fobjc-arc -Wall -o build/obj/EpubView.o EpubView.m
+echo "==> Compiling BookView.m"
+clang -c $ARCHS $COMMON -fobjc-arc -Wall -o build/obj/BookView.o BookView.m
 
 echo "==> Linking $OUT"
 clang -dynamiclib $ARCHS $COMMON \
   -framework Cocoa -framework WebKit \
   -lz \
-  -o "$OUT" build/obj/EpubView.o build/obj/zipreader.o
+  -o "$OUT" build/obj/BookView.o build/obj/zipreader.o
 
 # The plugin loads its reader assets from ./assets next to the .wlx, so the
 # build output is runnable (and testable) on its own.

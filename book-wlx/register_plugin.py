@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Register the EpubView WLX plugin in doublecmd.xml.
+"""Register the BookView WLX plugin in doublecmd.xml.
 
 Inserts a <WlxPlugin> entry into <WlxPlugins>, placed BEFORE any catch-all
 plugin (e.g. MacPreview with DetectString (EXT!="")) so Double Commander picks
@@ -9,8 +9,8 @@ Makes a timestamped backup first.
 import sys, shutil, datetime
 import xml.etree.ElementTree as ET
 
-DETECT = 'EXT="EPUB"'
-NAME = "EpubView"
+DETECT = 'EXT="EPUB"|EXT="FB2"|EXT="FBZ"'
+NAME = "BookView"
 
 
 def main(config_path, wlx_path):
@@ -28,7 +28,7 @@ def main(config_path, wlx_path):
     if wlx is None:
         wlx = ET.SubElement(plugins, "WlxPlugins")
 
-    # Remove any prior EpubView entry (idempotent re-install).
+    # Remove any prior BookView entry (idempotent re-install).
     for el in list(wlx):
         name_el = el.find("Name")
         if name_el is not None and name_el.text == NAME:
@@ -55,5 +55,5 @@ def main(config_path, wlx_path):
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        sys.exit("usage: register_plugin.py <doublecmd.xml> <EpubView.wlx>")
+        sys.exit("usage: register_plugin.py <doublecmd.xml> <BookView.wlx>")
     main(sys.argv[1], sys.argv[2])

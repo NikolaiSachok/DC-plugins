@@ -1,10 +1,10 @@
-; EpubView plugin settings (optional).
+; BookView plugin settings (optional).
 ;
-; Copy this file to "EpubView.ini" next to EpubView.wlx (or use the ini path
+; Copy this file to "BookView.ini" next to BookView.wlx (or use the ini path
 ; Double Commander assigns the plugin) and edit. Changes apply the next time you
 ; open a book — no restart needed. Delete the file to return to defaults.
 
-[EpubView]
+[BookView]
 
 ; Color theme: auto (follow macOS), light, dark, or sepia.
 theme = auto
@@ -31,7 +31,8 @@ toc = 1
 ; Load the book's own stylesheets instead of the reader's typography (1/0).
 ; Off by default: publisher CSS usually hard-codes black-on-white and fixed
 ; sizes, which fights the theme. Turn it on for books whose layout matters
-; (comics, poetry, heavily designed pages).
+; (comics, poetry, heavily designed pages). EPUB only — a FictionBook carries
+; no stylesheet.
 publishercss = 0
 
 ; Show a faint plugin-version badge in the bottom-right corner (1/0).

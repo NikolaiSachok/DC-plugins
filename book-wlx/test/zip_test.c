@@ -91,6 +91,35 @@ static void testSample2(const char *dir) {
     free(path);
 }
 
+static void testFbz(const char *dir) {
+    char *path = joinPath(dir, "sample.fbz");
+    printf("sample.fbz (zipped FictionBook)\n");
+
+    ZipArchive *z = ZipOpen(path);
+    check(z != NULL, "opens");
+    if (!z) { free(path); failures++; return; }
+
+    /* The plugin finds the FictionBook by scanning entry names. */
+    const char *found = NULL;
+    for (size_t i = 0; i < ZipEntryCount(z); i++) {
+        const char *n = ZipEntryName(z, i);
+        const char *dot = n ? strrchr(n, '.') : NULL;
+        if (dot && strcmp(dot, ".fb2") == 0) { found = n; break; }
+    }
+    check(found != NULL, "a .fb2 entry is discoverable by name");
+
+    size_t len = 0;
+    unsigned char *fb2 = found ? ZipCopyEntry(z, found, &len) : NULL;
+    check(fb2 && strstr((char *)fb2, "FictionBook") != NULL,
+          "the FictionBook inflates to its XML root");
+    check(fb2 && strstr((char *)fb2, "windows-1251") != NULL,
+          "its declared encoding is preserved for the reader to honour");
+    free(fb2);
+
+    ZipClose(z);
+    free(path);
+}
+
 static void testGarbage(const char *dir) {
     printf("malformed input\n");
     check(ZipOpen("/nonexistent/nowhere.epub") == NULL, "missing file returns NULL");
@@ -127,6 +156,7 @@ int main(int argc, char **argv) {
     printf("zipreader checks against %s\n\n", dir);
     testSample3(dir);
     testSample2(dir);
+    testFbz(dir);
     testGarbage(dir);
     printf("\n%s\n", failures ? "FAILURES" : "all zipreader checks passed");
     return failures ? 1 : 0;

@@ -42,7 +42,7 @@ the test meaningful. See `markdown-wlx/test/test_host.m` and `esc_verify.m`.
 
 **If the plugin is a viewer built on `WKWebView`, it needs the Esc fix.** The web view
 swallows Escape and DC's viewer then won't close. Copy the `-keyDown:` override from
-`markdown-wlx/MarkdownView.m` or `epub-wlx/EpubView.m`, ship `test/esc_verify.m`, and
+`markdown-wlx/MarkdownView.m` or `book-wlx/BookView.m`, ship `test/esc_verify.m`, and
 still press Esc in the real Double Commander before shipping — the mock passes either
 way. CLAUDE.md has the full note.
 

@@ -1,26 +1,31 @@
 /*
- * EpubView.wlx — Double Commander Lister (WLX) plugin for macOS.
- * Renders EPUB e-books in the F3 viewer: table of contents, continuous
- * reflowable text, cover and metadata, light / dark / sepia themes.
+ * BookView.wlx — Double Commander Lister (WLX) plugin for macOS.
+ * Renders EPUB and FictionBook (FB2) e-books in the F3 viewer: table of
+ * contents, continuous reflowable text, cover and metadata, light / dark /
+ * sepia themes.
  *
  * How it fits together
  * --------------------
- * An `.epub` is a ZIP (OCF) container of XHTML, CSS and images. Rather than
- * unpacking it to a temp directory, the plugin serves the book straight out of
- * the ZIP through a WKURLSchemeHandler on a private `x-epub://` scheme. That
- * keeps every resource same-origin (so relative hrefs, images, fonts and
- * `fetch()` all just work), writes nothing to disk, and makes escaping the
- * container structurally impossible — a path simply either names an entry or
- * it doesn't.
+ * An `.epub` is a ZIP (OCF) container of XHTML, CSS and images; an `.fb2` is a
+ * single self-contained XML document (optionally zipped, as `.fbz`). Rather
+ * than unpacking anything to a temp directory, the plugin serves the book
+ * straight out of the container through a WKURLSchemeHandler on a private
+ * `x-book://` scheme. That keeps every resource same-origin (so relative
+ * hrefs, images, fonts and `fetch()` all just work), writes nothing to disk,
+ * and makes escaping the container structurally impossible — a path simply
+ * either names an entry or it doesn't.
  *
- * The native side therefore owns container I/O and the page shell; the EPUB
- * document model (container.xml -> OPF -> spine -> nav/NCX) is parsed in
- * `assets/reader.js`, where DOMParser handles real-world XHTML far better than
- * hand-rolled parsing would.
+ * The native side therefore owns container I/O and the page shell; both
+ * document models — EPUB's container.xml -> OPF -> spine -> nav/NCX, and FB2's
+ * description/body/binary tree — are parsed in `assets/reader.js`, where
+ * DOMParser handles real-world markup far better than hand-rolled parsing
+ * would.
  *
- * Book content is untrusted: chapters are sanitized with DOMPurify before they
- * are inserted, and a CSP restricts the page to its own origin, so nothing in a
- * book can execute script or reach the network.
+ * Book content is untrusted: EPUB chapters are sanitized with DOMPurify before
+ * they are inserted (FB2 is rebuilt element by element from a fixed vocabulary,
+ * so nothing from the file is ever parsed as markup), and a CSP restricts the
+ * page to its own origin, so nothing in a book can execute script or reach the
+ * network.
  *
  * On macOS, Double Commander passes/expects NSView* as the window handle.
  */
@@ -31,7 +36,7 @@
 #include "listplug.h"
 #include "zipreader.h"
 
-#define EPV_VERSION "0.1.0"   /* single source of truth for the plugin version */
+#define BKV_VERSION "0.1.0"   /* single source of truth for the plugin version */
 
 /* Reserved first path segment for the reader's own assets. Checked before the
  * ZIP, so a book cannot shadow the reader's stylesheet or script. */
@@ -90,7 +95,7 @@ static NSString *HTMLEscape(NSString *s) {
     return m;
 }
 
-#pragma mark - Configuration (optional EpubView.ini)
+#pragma mark - Configuration (optional BookView.ini)
 
 static NSString *gIniPath = nil;   /* set by ListSetDefaultParams */
 static long      gFontSizeOverride = 0; /* last size chosen with A- / A+ this session */
@@ -98,10 +103,10 @@ static long      gFontSizeOverride = 0; /* last size chosen with A- / A+ this se
 static NSString *ConfigIniPath(void) {
     if (gIniPath.length) return gIniPath;
     NSString *dir = PluginDirectory();
-    return dir ? [dir stringByAppendingPathComponent:@"EpubView.ini"] : nil;
+    return dir ? [dir stringByAppendingPathComponent:@"BookView.ini"] : nil;
 }
 
-/* Read the optional [EpubView] section. Re-read on every load so edits apply
+/* Read the optional [BookView] section. Re-read on every load so edits apply
  * without restarting Double Commander. Unset keys keep their defaults. */
 static NSDictionary *ReadConfig(void) {
     NSMutableDictionary *cfg = [@{ @"theme": @"auto", @"fontsize": @"18",
@@ -120,7 +125,7 @@ static NSDictionary *ReadConfig(void) {
         NSString *line = [raw stringByTrimmingCharactersInSet:ws];
         if (line.length == 0 || [line hasPrefix:@";"] || [line hasPrefix:@"#"]) continue;
         if ([line hasPrefix:@"["]) {
-            inSection = [[line lowercaseString] isEqualToString:@"[epubview]"];
+            inSection = [[line lowercaseString] isEqualToString:@"[bookview]"];
             continue;
         }
         if (!inSection) continue;
@@ -141,7 +146,7 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
            [v isEqualToString:@"yes"] || [v isEqualToString:@"on"];
 }
 
-#pragma mark - EPWebView
+#pragma mark - BKWebView
 
 /* WKWebView swallows the Escape key, so Double Commander's viewer never sees it
  * and won't close on Esc.
@@ -156,10 +161,10 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
  * move keyboard focus off the web view onto DC's own view, then re-post the
  * Escape event so NSApplication dispatches it normally and LCL closes the
  * viewer. Every other key is left to normal web handling. */
-@interface EPWebView : WKWebView
+@interface BKWebView : WKWebView
 @end
 
-@implementation EPWebView
+@implementation BKWebView
 - (void)keyDown:(NSEvent *)event {
     if (event.keyCode != 53 /* kVK_Escape */) {
         [super keyDown:event];
@@ -190,25 +195,27 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
 }
 @end
 
-#pragma mark - x-epub:// scheme handler
+#pragma mark - x-book:// scheme handler
 
 /*
- * Serves three things under x-epub://book/<token>/ :
+ * Serves four things under x-book://book/<token>/ :
  *   /<token>/__dcreader__/index.html   the generated reader shell
  *   /<token>/__dcreader__/<asset>      reader.css / reader.js / dompurify.min.js
- *   /<token>/<zip entry path>          a file from inside the book
+ *   /<token>/__dcreader__/document.fb2 the FictionBook document, for an FB2 book
+ *   /<token>/<zip entry path>          a file from inside an EPUB
  *
  * `<token>` changes on every load so a reused web view can never serve a
  * previous book's cached resource under the same URL.
  */
-@interface EPSchemeHandler : NSObject <WKURLSchemeHandler>
-@property (nonatomic, assign) ZipArchive *zip;         /* not owned; see EPView */
+@interface BKSchemeHandler : NSObject <WKURLSchemeHandler>
+@property (nonatomic, assign) ZipArchive *zip;         /* not owned; see BKView */
+@property (nonatomic, strong) NSData     *fb2;         /* the whole FB2 document */
 @property (nonatomic, copy)   NSString   *shellHTML;
 @property (nonatomic, copy)   NSString   *token;
 @property (nonatomic, strong) NSMutableSet *liveTasks; /* main thread only */
 @end
 
-@implementation EPSchemeHandler
+@implementation BKSchemeHandler
 
 - (instancetype)init {
     self = [super init];
@@ -260,6 +267,12 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
                         mime:@"text/html; charset=utf-8"];
             return;
         }
+        if ([name isEqualToString:@"document.fb2"]) {
+            /* Served as text so the reader can sniff the declared encoding —
+             * plenty of FictionBook files are windows-1251, not UTF-8. */
+            [self finishTask:task data:self.fb2 mime:@"application/octet-stream"];
+            return;
+        }
         /* Fixed allow-list — never a caller-controlled path into the filesystem. */
         NSSet *allowed = [NSSet setWithObjects:@"reader.css", @"reader.js",
                                                @"dompurify.min.js", nil];
@@ -292,32 +305,32 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
 
 @end
 
-#pragma mark - EPView
+#pragma mark - BKView
 
-@class EPView;
+@class BKView;
 
 /* Receives reading position / font size from the page. Holds the view weakly so
  * the userContentController -> handler -> view chain is not a retain cycle. */
-@interface EPMessageSink : NSObject <WKScriptMessageHandler>
-@property (nonatomic, weak) EPView *owner;
+@interface BKMessageSink : NSObject <WKScriptMessageHandler>
+@property (nonatomic, weak) BKView *owner;
 @end
 
-@interface EPView : NSView
+@interface BKView : NSView
 @property (nonatomic, strong) WKWebView       *web;
-@property (nonatomic, strong) EPSchemeHandler *handler;
-@property (nonatomic, strong) EPMessageSink   *sink;
+@property (nonatomic, strong) BKSchemeHandler *handler;
+@property (nonatomic, strong) BKMessageSink   *sink;
 @property (nonatomic, copy)   NSString        *currentPath;
 @property (nonatomic, assign) ZipArchive      *zip;
 @property (nonatomic, assign) NSUInteger       loadCounter;
 /* Reading position per book: chapter index + fraction scrolled through it. */
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSDictionary *> *positionByPath;
-- (BOOL)loadEpubAtPath:(NSString *)path;
+- (BOOL)loadBookAtPath:(NSString *)path;
 @end
 
-@implementation EPMessageSink
+@implementation BKMessageSink
 - (void)userContentController:(WKUserContentController *)ucc
       didReceiveScriptMessage:(WKScriptMessage *)message {
-    EPView *v = self.owner;
+    BKView *v = self.owner;
     if (!v || ![message.body isKindOfClass:[NSDictionary class]]) return;
     NSDictionary *msg = message.body;
     NSString *type = [msg[@"t"] description];
@@ -332,23 +345,23 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
 }
 @end
 
-@implementation EPView
+@implementation BKView
 
 - (instancetype)initWithFrame:(NSRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
         self.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         _positionByPath = [NSMutableDictionary dictionary];
-        _handler = [[EPSchemeHandler alloc] init];
-        _sink = [[EPMessageSink alloc] init];
+        _handler = [[BKSchemeHandler alloc] init];
+        _sink = [[BKMessageSink alloc] init];
         _sink.owner = self;
 
         WKWebViewConfiguration *cfg = [[WKWebViewConfiguration alloc] init];
-        [cfg setURLSchemeHandler:_handler forURLScheme:@"x-epub"];
+        [cfg setURLSchemeHandler:_handler forURLScheme:@"x-book"];
         cfg.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
-        [cfg.userContentController addScriptMessageHandler:_sink name:@"dcepub"];
+        [cfg.userContentController addScriptMessageHandler:_sink name:@"dcbook"];
 
-        _web = [[EPWebView alloc] initWithFrame:self.bounds configuration:cfg];
+        _web = [[BKWebView alloc] initWithFrame:self.bounds configuration:cfg];
         _web.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         @try { [_web setValue:@NO forKey:@"drawsBackground"]; } @catch (__unused id e) {}
         [self addSubview:_web];
@@ -360,7 +373,8 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
 - (NSString *)shellHTMLForToken:(NSString *)token
                          config:(NSDictionary *)cfg
                        position:(NSDictionary *)pos
-                       fileName:(NSString *)fileName {
+                       fileName:(NSString *)fileName
+                         format:(NSString *)format {
     NSString *theme = [[cfg[@"theme"] description] lowercaseString];
     if (![@[@"light", @"dark", @"sepia"] containsObject:theme]) theme = @"auto";
 
@@ -370,8 +384,8 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
     if (lineHeight < 1.1 || lineHeight > 2.6) lineHeight = 1.7;
 
     NSDictionary *jsCfg = @{
-        @"base":         [NSString stringWithFormat:@"x-epub://book/%@/", token],
-        @"reader":       [NSString stringWithFormat:@"x-epub://book/%@/%@/", token, READER_PREFIX],
+        @"base":         [NSString stringWithFormat:@"x-book://book/%@/", token],
+        @"reader":       [NSString stringWithFormat:@"x-book://book/%@/%@/", token, READER_PREFIX],
         @"theme":        theme,
         @"fontSize":     @(fontSize),
         @"maxWidth":     @(maxWidth),
@@ -380,9 +394,10 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
         @"publisherCSS": @(CfgBool(cfg, @"publishercss")),
         @"tocOpen":      @(CfgBool(cfg, @"toc")),
         @"showVersion":  @(CfgBool(cfg, @"showversion")),
-        @"version":      @EPV_VERSION,
+        @"version":      @BKV_VERSION,
         @"fileName":     fileName ?: @"",
         @"position":     pos ?: @{},
+        @"format":       format ?: @"epub",
     };
     NSData *json = [NSJSONSerialization dataWithJSONObject:jsCfg options:0 error:NULL];
     NSString *jsonStr = [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding];
@@ -446,13 +461,41 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
         @".t{font-size:16px;font-weight:600;margin-bottom:8px;}"
         @".f{opacity:.6;font-size:12px;margin-top:14px;word-break:break-all;}"
         @"</style></head><body><div class=\"box\">"
-        @"<div class=\"t\">Can't open this EPUB</div><div>%@</div>"
+        @"<div class=\"t\">Can't open this book</div><div>%@</div>"
         @"<div class=\"f\">%@</div></div></body></html>",
         HTMLEscape(reason), HTMLEscape(fileName)];
 }
 
-- (BOOL)loadEpubAtPath:(NSString *)path {
+/* First entry that looks like a FictionBook document, for `.fbz` / zipped FB2. */
+static NSString *FB2EntryInZip(ZipArchive *zip) {
+    for (size_t i = 0; i < ZipEntryCount(zip); i++) {
+        const char *name = ZipEntryName(zip, i);
+        if (!name) continue;
+        NSString *entry = [NSString stringWithUTF8String:name];
+        if ([[entry pathExtension] caseInsensitiveCompare:@"fb2"] == NSOrderedSame) return entry;
+    }
+    return nil;
+}
+
+/* FictionBook is a bare XML file; the root element names it. Only the head of
+ * the file is examined, and as bytes, because the declared encoding is often
+ * windows-1251 and decoding is the reader's job. */
+static BOOL LooksLikeFB2(NSData *data) {
+    NSData *head = data.length > 4096 ? [data subdataWithRange:NSMakeRange(0, 4096)] : data;
+    return [head rangeOfData:[@"FictionBook" dataUsingEncoding:NSASCIIStringEncoding]
+                     options:0 range:NSMakeRange(0, head.length)].location != NSNotFound;
+}
+
+/*
+ * Both supported formats are recognised from content, not from the extension:
+ * a ZIP holding META-INF/container.xml is an EPUB, a ZIP holding a .fb2 entry
+ * is a zipped FictionBook, and a bare XML file naming FictionBook is an FB2. A
+ * mis-named book therefore still opens.
+ */
+- (BOOL)loadBookAtPath:(NSString *)path {
     if (self.zip) { ZipClose(self.zip); self.zip = NULL; }
+    self.handler.zip = NULL;
+    self.handler.fb2 = nil;
     self.currentPath = path;
     self.loadCounter++;
 
@@ -460,34 +503,62 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
     NSString *fileName = [path lastPathComponent] ?: @"";
     self.handler.token = token;
 
+    NSString *format = nil;
+    NSString *reason = nil;
+
     ZipArchive *zip = ZipOpen(path.fileSystemRepresentation);
-    if (!zip) {
-        self.handler.zip = NULL;
-        self.handler.shellHTML = [self errorHTMLForFile:fileName
-                                                 reason:@"The file isn't a readable ZIP container."];
-    } else if (!ZipHasEntry(zip, "META-INF/container.xml")) {
-        ZipClose(zip);
-        zip = NULL;
-        self.handler.zip = NULL;
-        self.handler.shellHTML = [self errorHTMLForFile:fileName
-                                                 reason:@"No META-INF/container.xml — this ZIP isn't an EPUB."];
+    if (zip) {
+        NSString *fb2Entry = nil;
+        if (ZipHasEntry(zip, "META-INF/container.xml")) {
+            format = @"epub";
+            self.zip = zip;
+            self.handler.zip = zip;
+        } else if ((fb2Entry = FB2EntryInZip(zip))) {
+            size_t len = 0;
+            unsigned char *bytes = ZipCopyEntry(zip, fb2Entry.UTF8String, &len);
+            if (bytes) {
+                format = @"fb2";
+                self.handler.fb2 = [NSData dataWithBytesNoCopy:bytes length:len freeWhenDone:YES];
+            } else {
+                reason = @"The FictionBook file inside this archive could not be decompressed.";
+            }
+            ZipClose(zip);   /* everything needed is already in memory */
+            zip = NULL;
+        } else {
+            reason = @"This ZIP is neither an EPUB (no META-INF/container.xml) "
+                     @"nor a zipped FictionBook.";
+            ZipClose(zip);
+            zip = NULL;
+        }
     } else {
-        self.zip = zip;
-        self.handler.zip = zip;
-        self.handler.shellHTML = [self shellHTMLForToken:token
-                                                  config:ReadConfig()
-                                                position:self.positionByPath[path]
-                                                fileName:fileName];
+        NSData *raw = [NSData dataWithContentsOfFile:path
+                                             options:NSDataReadingMappedIfSafe
+                                               error:NULL];
+        if (raw && LooksLikeFB2(raw)) {
+            format = @"fb2";
+            self.handler.fb2 = raw;
+        } else {
+            reason = raw ? @"This is neither an EPUB container nor a FictionBook document."
+                         : @"The file could not be read.";
+        }
     }
 
-    NSString *url = [NSString stringWithFormat:@"x-epub://book/%@/%@/index.html",
+    self.handler.shellHTML = format
+        ? [self shellHTMLForToken:token
+                           config:ReadConfig()
+                         position:self.positionByPath[path]
+                         fileName:fileName
+                           format:format]
+        : [self errorHTMLForFile:fileName reason:reason];
+
+    NSString *url = [NSString stringWithFormat:@"x-book://book/%@/%@/index.html",
                      token, READER_PREFIX];
     [self.web loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:url]]];
-    return zip != NULL;
+    return format != nil;
 }
 
 - (void)dealloc {
-    [_web.configuration.userContentController removeScriptMessageHandlerForName:@"dcepub"];
+    [_web.configuration.userContentController removeScriptMessageHandlerForName:@"dcbook"];
     _handler.zip = NULL;
     if (_zip) ZipClose(_zip);
 }
@@ -496,14 +567,14 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
 
 #pragma mark - WLX exported API
 
-static EPView *MakeAndLoad(HWND ParentWin, const char *FileToLoad) {
+static BKView *MakeAndLoad(HWND ParentWin, const char *FileToLoad) {
     NSView *parent = (__bridge NSView *)ParentWin;
     NSRect frame = parent ? parent.bounds : NSMakeRect(0, 0, 800, 600);
-    EPView *view = [[EPView alloc] initWithFrame:frame];
+    BKView *view = [[BKView alloc] initWithFrame:frame];
     NSString *path = FileToLoad ? [NSString stringWithUTF8String:FileToLoad] : @"";
     /* A malformed book still gets a view — it shows why it couldn't be opened,
      * which beats falling through to a hex dump of the ZIP. */
-    [view loadEpubAtPath:path];
+    [view loadBookAtPath:path];
     if (parent) [parent addSubview:view];
     return view;
 }
@@ -511,7 +582,7 @@ static EPView *MakeAndLoad(HWND ParentWin, const char *FileToLoad) {
 __attribute__((visibility("default")))
 HWND __stdcall ListLoad(HWND ParentWin, char *FileToLoad, int ShowFlags) {
     (void)ShowFlags;
-    __block EPView *result = nil;
+    __block BKView *result = nil;
     if ([NSThread isMainThread]) {
         result = MakeAndLoad(ParentWin, FileToLoad);
     } else {
@@ -526,14 +597,14 @@ HWND __stdcall ListLoad(HWND ParentWin, char *FileToLoad, int ShowFlags) {
 __attribute__((visibility("default")))
 int __stdcall ListLoadNext(HWND ParentWin, HWND PluginWin, char *FileToLoad, int ShowFlags) {
     (void)ParentWin; (void)ShowFlags;
-    EPView *view = (__bridge EPView *)PluginWin;
-    if (![view isKindOfClass:[EPView class]]) return LISTPLUGIN_ERROR;
+    BKView *view = (__bridge BKView *)PluginWin;
+    if (![view isKindOfClass:[BKView class]]) return LISTPLUGIN_ERROR;
     NSString *path = FileToLoad ? [NSString stringWithUTF8String:FileToLoad] : @"";
     __block BOOL ok = NO;
     if ([NSThread isMainThread]) {
-        ok = [view loadEpubAtPath:path];
+        ok = [view loadBookAtPath:path];
     } else {
-        dispatch_sync(dispatch_get_main_queue(), ^{ ok = [view loadEpubAtPath:path]; });
+        dispatch_sync(dispatch_get_main_queue(), ^{ ok = [view loadBookAtPath:path]; });
     }
     return ok ? LISTPLUGIN_OK : LISTPLUGIN_ERROR;
 }
@@ -542,7 +613,7 @@ __attribute__((visibility("default")))
 void __stdcall ListCloseWindow(HWND ListWin) {
     if (!ListWin) return;
     void (^close)(void) = ^{
-        EPView *view = (EPView *)CFBridgingRelease(ListWin); /* -1 */
+        BKView *view = (BKView *)CFBridgingRelease(ListWin); /* -1 */
         [view removeFromSuperview];
     };
     if ([NSThread isMainThread]) close();
@@ -552,7 +623,7 @@ void __stdcall ListCloseWindow(HWND ListWin) {
 __attribute__((visibility("default")))
 void __stdcall ListGetDetectString(char *DetectString, int maxlen) {
     if (!DetectString || maxlen <= 0) return;
-    const char *s = "EXT=\"EPUB\"";
+    const char *s = "EXT=\"EPUB\"|EXT=\"FB2\"|EXT=\"FBZ\"";
     strncpy(DetectString, s, maxlen - 1);
     DetectString[maxlen - 1] = '\0';
 }

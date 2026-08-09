@@ -1,9 +1,9 @@
 /*
- * EpubView reader stylesheet.
+ * BookView reader stylesheet.
  *
  * Book content is rendered with these reading styles rather than the
  * publisher's own CSS, so every book gets consistent typography and honours the
- * chosen theme. (Set `publishercss = 1` in EpubView.ini to load the book's own
+ * chosen theme. (Set `publishercss = 1` in BookView.ini to load the book's own
  * stylesheets on top instead.)
  */
 
@@ -242,6 +242,47 @@ html, body {
   border: 1px solid var(--rule); padding: 6px 10px; text-align: start; text-indent: 0;
 }
 .chapter th { background: color-mix(in srgb, var(--fg) 5%, transparent); font-weight: 650; }
+
+/* ---------- FictionBook structures ---------- */
+
+.chapter .fb2-section + .fb2-section { margin-top: 1.6em; }
+.chapter .anchor { display: inline; }
+
+.chapter .epigraph {
+  margin: 1.4em 0 1.4em auto; max-width: 78%;
+  padding: 0 0 0 1.1em; border-left: 2px solid var(--rule);
+  font-style: italic; color: var(--panel-fg);
+}
+.chapter .cite {
+  margin: 1.3em 0; padding: 0 0 0 1.2em;
+  border-left: 2px solid var(--rule); color: var(--panel-fg);
+}
+.chapter .epigraph p, .chapter .cite p { text-indent: 0; }
+.chapter .text-author {
+  margin: .4em 0 0; text-indent: 0; text-align: end;
+  font-style: normal; font-size: .88em; color: var(--muted);
+}
+
+.chapter .poem { margin: 1.4em 0; font-style: italic; }
+.chapter .stanza + .stanza { margin-top: 1em; }
+.chapter .verse { text-indent: 0; padding-left: 1.6em; }
+
+.chapter .annotation {
+  margin: 0 0 1.8em; padding: 0 0 1.2em;
+  border-bottom: 1px solid var(--rule); color: var(--panel-fg); font-size: .95em;
+}
+.chapter .annotation p { text-indent: 0; margin-bottom: .5em; }
+.chapter .date { text-indent: 0; color: var(--muted); font-size: .88em; }
+
+/* Footnote markers read as references, not as body links. */
+.chapter a.note-ref {
+  font-size: .75em; vertical-align: super; line-height: 0;
+  padding: 0 .1em; text-decoration: none;
+}
+.chapter.notes { font-size: .92em; color: var(--panel-fg); }
+.chapter.notes p { text-indent: 0; margin-bottom: .5em; }
+
+.chapter .read-error { color: var(--muted); font-style: italic; text-indent: 0; }
 
 /* The cover, when the book has one, gets the viewport to itself. */
 #cover { padding: 24px 28px 8px; text-align: center; }

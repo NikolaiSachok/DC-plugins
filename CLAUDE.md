@@ -85,7 +85,7 @@ not as a bug to rediscover:
    **re-post a fresh Escape `NSEvent`** with `[NSApp postEvent:… atStart:YES]` so
    `NSApplication` dispatches it and LCL closes the viewer. Pass every other key
    through to `super`. Copy the implementation from `markdown-wlx/MarkdownView.m` or
-   `epub-wlx/EpubView.m` — it is the same in both.
+   `book-wlx/BookView.m` — it is the same in both.
 2. Ship `test/esc_verify.m` (a parent view that stands in for DC and records the
    re-posted event) and keep it green.
 3. **That harness is a regression net, not proof.** The first Esc fix passed a mock

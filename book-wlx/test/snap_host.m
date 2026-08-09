@@ -1,8 +1,8 @@
 /*
- * Render a book through the real EpubView.wlx and save a PNG — the visual
+ * Render a book through the real BookView.wlx and save a PNG — the visual
  * counterpart to test_host.m, used to eyeball typography and theming.
  *
- *   ./build/snap_host <EpubView.wlx> <book.epub> <out.png> [scrollY] [width] [height]
+ *   ./build/snap_host <BookView.wlx> <book.epub> <out.png> [scrollY] [width] [height]
  */
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>

@@ -1,4 +1,4 @@
-# Third-party licenses — epub-wlx
+# Third-party licenses — book-wlx
 
 This plugin vendors the following library under `assets/` and loads it at
 runtime. It retains its own license.

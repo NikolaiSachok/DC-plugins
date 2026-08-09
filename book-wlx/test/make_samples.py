@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
-"""Generate the sample e-books the EpubView harnesses run against.
+"""Generate the sample e-books the BookView harnesses run against.
 
 Books are synthesised rather than committed so the repo carries no binary
-fixtures and no third-party text. Two are produced:
+fixtures and no third-party text. Four are produced:
 
   sample3.epub — EPUB 3: nav document, cover image, an inline image, and a
                  chapter carrying hostile content (inline <script>, an
                  onerror handler, a remote image) that must not survive.
   sample2.epub — EPUB 2: NCX table of contents, windows-1251 chapter, and a
                  stray uncompressed entry — the older shapes still in the wild.
+  sample.fb2   — FictionBook, encoded windows-1251 as most Russian FB2 are:
+                 nested sections, a base64 cover and inline image, epigraph,
+                 poem/stanza/verse, cite, table, a footnote into a notes body,
+                 and hostile content that must not survive.
+  sample.fbz   — the same FictionBook, zipped.
 """
+import base64
 import os
 import struct
 import sys
@@ -102,7 +108,7 @@ h1 { font-family: "Publisher Serif", serif; }
 OPF3 = """<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-    <dc:identifier id="bookid">urn:uuid:epubview-sample-3</dc:identifier>
+    <dc:identifier id="bookid">urn:uuid:bookview-sample-3</dc:identifier>
     <dc:title>The Wandering Lamp</dc:title>
     <dc:creator>Marguerite Vance</dc:creator>
     <dc:language>en</dc:language>
@@ -124,7 +130,7 @@ OPF3 = """<?xml version="1.0" encoding="utf-8"?>
 
 NCX = """<?xml version="1.0" encoding="utf-8"?>
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
-  <head><meta name="dtb:uid" content="urn:uuid:epubview-sample-2"/></head>
+  <head><meta name="dtb:uid" content="urn:uuid:bookview-sample-2"/></head>
   <docTitle><text>A Ledger of Small Weights</text></docTitle>
   <navMap>
     <navPoint id="n1" playOrder="1">
@@ -146,7 +152,7 @@ NCX = """<?xml version="1.0" encoding="utf-8"?>
 OPF2 = """<?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="2.0" unique-identifier="bookid">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
-    <dc:identifier id="bookid">urn:uuid:epubview-sample-2</dc:identifier>
+    <dc:identifier id="bookid">urn:uuid:bookview-sample-2</dc:identifier>
     <dc:title>A Ledger of Small Weights</dc:title>
     <dc:creator opf:role="aut">Marguerite Vance</dc:creator>
     <dc:language>en</dc:language>
@@ -192,6 +198,67 @@ def write_epub(path, opf_path, files):
             z.writestr(name, data, compress_type=zipfile.ZIP_DEFLATED)
 
 
+# A FictionBook is one self-contained XML file: metadata in <description>,
+# text in <body>, images as base64 <binary>. This one carries every structure a
+# reader has to map (nested sections, epigraph, poem, cite, table, a footnote
+# into a named notes body) plus content that must not survive the transform.
+FB2 = """<?xml version="1.0" encoding="windows-1251"?>
+<FictionBook xmlns="http://www.gribuser.ru/xml/fictionbook/2.0"
+             xmlns:l="http://www.w3.org/1999/xlink">
+<description>
+  <title-info>
+    <genre>prose</genre>
+    <author><first-name>Маргарита</first-name><last-name>Ванс</last-name></author>
+    <book-title>Блуждающая лампа</book-title>
+    <annotation><p>Повесть о гавани, гроссбухе и одной лампе.</p></annotation>
+    <lang>ru</lang>
+    <coverpage><image l:href="#cover.png"/></coverpage>
+  </title-info>
+  <document-info><id>bookview-sample-fb2</id></document-info>
+</description>
+<body>
+  <title><p>Блуждающая лампа</p></title>
+  <epigraph><p>Ничто плавающее не бывает вполне неподвижным.</p>
+    <text-author>корабельная поговорка</text-author></epigraph>
+  <section id="ch1">
+    <title><p>Глава первая. Гавань</p></title>
+    <p>Прилив в то утро приходил медленно, и вместе с ним — запах каната
+    и холодного железа.</p>
+    <p>Маргарита сосчитала лодки дважды<a l:href="#note1" type="note">[1]</a>
+    и оба раза получила разный ответ.</p>
+    <image l:href="#plate.png" alt="Тарелка"/>
+    <poem><stanza><v>Вода стоит, как ртуть,</v><v>и мачты не дрожат.</v></stanza></poem>
+    <section id="ch1a">
+      <title><p>Прибытие</p></title>
+      <p>Ей сказали, что переправа занимает четыре часа. Она заняла одиннадцать.</p>
+      <cite><p>Гавань считает лучше, чем люди.</p><text-author>судовой журнал</text-author></cite>
+    </section>
+  </section>
+  <section id="ch2">
+    <title><p>Глава вторая. Гроссбух</p></title>
+    <p>Каждая страница гроссбуха была пронумерована, и <strong>каждый номер</strong>
+    был <emphasis>неверным</emphasis>.</p>
+    <table><tr><th>День</th><th>Вес</th></tr><tr><td>Понедельник</td><td>14</td></tr></table>
+    <empty-line/>
+    <p>Соль, дёготь, одна блуждающая лампа.</p>
+    <script>window.PWNED = 1;</script>
+    <p onclick="window.PWNED = 2;">Строка с обработчиком.</p>
+    <image l:href="https://example.invalid/tracker.gif"/>
+  </section>
+</body>
+<body name="notes">
+  <title><p>Примечания</p></title>
+  <section id="note1">
+    <title><p>1</p></title>
+    <p>В гавани стояло либо одиннадцать, либо тринадцать лодок.</p>
+  </section>
+</body>
+<binary id="cover.png" content-type="image/png">{cover}</binary>
+<binary id="plate.png" content-type="image/png">{plate}</binary>
+</FictionBook>
+"""
+
+
 def main(outdir):
     os.makedirs(outdir, exist_ok=True)
     cover = png(120, 180, (58, 74, 120))
@@ -222,8 +289,24 @@ def main(outdir):
                    compress_type=zipfile.ZIP_STORED)
         z.writestr("images/cover.png", cover)
 
+    fb2_text = FB2.format(cover=base64.b64encode(cover).decode("ascii"),
+                          plate=base64.b64encode(plate).decode("ascii"))
+    # Written as windows-1251, matching the encoding its XML declaration names —
+    # the reader has to honour the declaration rather than assume UTF-8.
+    fb2_bytes = fb2_text.encode("cp1251")
+
+    plain = os.path.join(outdir, "sample.fb2")
+    with open(plain, "wb") as f:
+        f.write(fb2_bytes)
+
+    zipped = os.path.join(outdir, "sample.fbz")
+    with zipfile.ZipFile(zipped, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("sample.fb2", fb2_bytes)
+
     print(three)
     print(two)
+    print(plain)
+    print(zipped)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 /*
- * End-to-end harness for EpubView.wlx.
+ * End-to-end harness for BookView.wlx.
  *
  * dlopens the REAL built plugin and drives the WLX ABI exactly as Double
  * Commander does — ListGetDetectString, ListLoad, ListLoadNext, ListCloseWindow
@@ -8,7 +8,7 @@
  * GUI-bound (WebKit needs a run loop), so this runs locally rather than on a
  * headless CI runner. See zip_test.c for the part CI can run.
  *
- *   ./build/test_host build/EpubView.wlx build/samples
+ *   ./build/test_host build/BookView.wlx build/samples
  */
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
@@ -73,7 +73,7 @@ static NSString *str(id v) { return [v isKindOfClass:[NSString class]] ? v : [v 
 int main(int argc, char **argv) {
     @autoreleasepool {
         if (argc < 3) {
-            fprintf(stderr, "usage: test_host <EpubView.wlx> <samples dir>\n");
+            fprintf(stderr, "usage: test_host <BookView.wlx> <samples dir>\n");
             return 2;
         }
         [NSApplication sharedApplication];
@@ -93,12 +93,14 @@ int main(int argc, char **argv) {
 
         char detect[512] = {0};
         ListGetDetectString(detect, sizeof(detect));
-        check(strcmp(detect, "EXT=\"EPUB\"") == 0,
-              [NSString stringWithFormat:@"detect string is EXT=\"EPUB\" (got %s)", detect]);
+        check(strcmp(detect, "EXT=\"EPUB\"|EXT=\"FB2\"|EXT=\"FBZ\"") == 0,
+              [NSString stringWithFormat:@"detect string covers EPUB and FB2 (got %s)", detect]);
 
         NSString *dir = [NSString stringWithUTF8String:argv[2]];
         NSString *three = [dir stringByAppendingPathComponent:@"sample3.epub"];
         NSString *two   = [dir stringByAppendingPathComponent:@"sample2.epub"];
+        NSString *fb2   = [dir stringByAppendingPathComponent:@"sample.fb2"];
+        NSString *fbz   = [dir stringByAppendingPathComponent:@"sample.fbz"];
 
         NSWindow *win = [[NSWindow alloc]
             initWithContentRect:NSMakeRect(0, 0, 1000, 900)
@@ -131,7 +133,7 @@ int main(int argc, char **argv) {
               @"nested TOC level is preserved");
 
         check([runJS(web, @"(document.querySelector('#cover img')||{}).naturalWidth") intValue] == 120,
-              @"cover image loads over x-epub://");
+              @"cover image loads over x-book://");
         check([runJS(web, @"(document.querySelector('.chapter img[alt=\"A plate\"]')||{}).naturalWidth") intValue] == 64,
               @"an inline chapter image loads");
         check([runJS(web, @"!!document.querySelector('.chapter figcaption')") boolValue],
@@ -147,11 +149,11 @@ int main(int argc, char **argv) {
         check([runJS(web, @"document.querySelectorAll('.chapter [onerror], .chapter [onclick]').length") intValue] == 0,
               @"inline event handlers are stripped");
         check([runJS(web, @"[...document.querySelectorAll('.chapter [src]')]"
-                          @".every(e => e.getAttribute('src').startsWith('x-epub:'))") boolValue],
+                          @".every(e => e.getAttribute('src').startsWith('x-book:'))") boolValue],
               @"every remaining resource points inside the book");
         check([runJS(web, @"[...document.querySelectorAll('.chapter a')]"
                           @".every(a => !a.getAttribute('href') ||"
-                          @"           a.getAttribute('href').startsWith('x-epub:'))") boolValue],
+                          @"           a.getAttribute('href').startsWith('x-book:'))") boolValue],
               @"outside links lose their href but keep their text");
         check([runJS(web, @"!!document.querySelector('.chapter a[data-link]')") boolValue],
               @"an in-book link is marked for in-page navigation");
@@ -189,12 +191,70 @@ int main(int argc, char **argv) {
         check([runJS(web, @"document.body.textContent.includes('The Lamp')") boolValue] == NO,
               @"no content from the previous book survives");
 
+        printf("\nFictionBook (windows-1251, nested sections, base64 images)\n");
+        rc = ListLoadNext((__bridge HWND)win.contentView, pluginWin, (char *)fb2.UTF8String, 0);
+        check(rc == 0, @"ListLoadNext accepts an .fb2 file");
+        BOOL ready3 = waitFor(web, @"document.querySelectorAll('.chapter').length >= 3 &&"
+                                   @"!!document.getElementById('colophon')", 20);
+        check(ready3, @"the FictionBook renders");
+
+        check([str(runJS(web, @"document.getElementById('book-title').textContent"))
+                  isEqualToString:@"Блуждающая лампа"],
+              @"title comes from <book-title>, decoded from windows-1251");
+        check([str(runJS(web, @"document.getElementById('book-author').textContent"))
+                  isEqualToString:@"Маргарита Ванс"], @"author is assembled from name parts");
+        check([runJS(web, @"document.querySelectorAll('#toc-list a').length") intValue] == 6,
+              @"contents lists every titled section plus each body's own title");
+        check([runJS(web, @"document.querySelectorAll('#toc-list li[data-depth=\"1\"]').length") intValue] >= 1,
+              @"nested sections keep their depth");
+
+        check([runJS(web, @"(document.querySelector('#cover img')||{}).naturalWidth") intValue] == 120,
+              @"the base64 <coverpage> image is decoded and shown");
+        check([runJS(web, @"(document.querySelector('.chapter img[alt=\"Тарелка\"]')||{}).naturalWidth") intValue] == 64,
+              @"an inline <image> resolves to its <binary>");
+        check([runJS(web, @"!!document.querySelector('.chapter .epigraph .text-author')") boolValue],
+              @"epigraph and its attribution are mapped");
+        check([runJS(web, @"document.querySelectorAll('.chapter .poem .stanza .verse').length") intValue] == 2,
+              @"poem / stanza / verse structure survives");
+        check([runJS(web, @"!!document.querySelector('.chapter .cite')") boolValue],
+              @"cite is mapped to a quotation");
+        check([runJS(web, @"!!document.querySelector('.chapter table th')") boolValue],
+              @"tables are mapped");
+        check([runJS(web, @"!!document.querySelector('.chapter.notes')") boolValue],
+              @"the named notes body becomes its own section");
+
+        runJS(web, @"document.querySelector('.chapter a.note-ref').click()");
+        pump(0.4);
+        check([runJS(web, @"!!document.querySelector('[id=\"fb-note1\"]')") boolValue],
+              @"the footnote target exists, id-prefixed against collisions");
+        check([runJS(web, @"window.scrollY > 0") boolValue],
+              @"clicking a footnote jumps to the note");
+
+        printf("\nFictionBook content is neutralised\n");
+        check([runJS(web, @"typeof window.PWNED === 'undefined'") boolValue],
+              @"no script from the FictionBook executed");
+        check([runJS(web, @"document.querySelectorAll('.chapter script').length") intValue] == 0,
+              @"a <script> element in the FB2 never becomes markup");
+        check([runJS(web, @"document.querySelectorAll('.chapter [onclick]').length") intValue] == 0,
+              @"inline event handlers are not carried over");
+        check([runJS(web, @"[...document.querySelectorAll('.chapter img')]"
+                          @".every(i => i.getAttribute('src').startsWith('data:'))") boolValue],
+              @"images come only from the file's own <binary> data");
+
+        printf("\nzipped FictionBook (.fbz)\n");
+        rc = ListLoadNext((__bridge HWND)win.contentView, pluginWin, (char *)fbz.UTF8String, 0);
+        check(rc == 0, @"ListLoadNext accepts an .fbz archive");
+        check(waitFor(web, @"document.querySelectorAll('.chapter').length >= 3", 20),
+              @"the zipped FictionBook renders too");
+        check([str(runJS(web, @"document.getElementById('book-title').textContent"))
+                  isEqualToString:@"Блуждающая лампа"], @"same book, read out of the archive");
+
         printf("\nteardown\n");
         ListCloseWindow(pluginWin);
         pump(0.3);
         check(pluginView.superview == nil, @"ListCloseWindow removes the view");
 
-        printf("\n%s\n", gFailures ? "FAILURES" : "all EpubView checks passed");
+        printf("\n%s\n", gFailures ? "FAILURES" : "all BookView checks passed");
     }
     return gFailures ? 1 : 0;
 }
