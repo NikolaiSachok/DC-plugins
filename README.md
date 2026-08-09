@@ -29,32 +29,42 @@ reproducible and documented.
 More plugins will follow; the repo layout and the [contributor guide](CONTRIBUTING.md)
 are built for that.
 
-## `markdown-wlx` preview
+## What the viewers look like
 
 ![A Markdown file rendered in Double Commander's viewer by MarkdownView — with KaTeX math, a Mermaid diagram, syntax-highlighted code, and tables](markdown-wlx/docs/screenshot-light.png)
 
 Press **F3** on any `.md` file and it opens rendered. The built-in viewer's mode
 switch still lets you flip to the raw **Text** view (and back) at any time.
 
+![An EPUB open in Double Commander's viewer with BookView — contents sidebar with the current chapter highlighted, chapter text set as a book, a plate with its caption, and a table](book-wlx/docs/screenshot.png)
+
+**F3** on an `.epub`, `.fb2` or `.fbz` opens the book itself — contents sidebar,
+continuous reflowable text, cover and reading progress — instead of the container.
+
 ## Quick start
 
 Requires macOS 11+ and the Xcode command-line tools (`xcode-select --install`).
+Every plugin builds and installs the same way:
 
 ```sh
-cd markdown-wlx
-./build.sh          # → build/MarkdownView.wlx  (universal: arm64 + x86_64)
+cd book-wlx        # or markdown-wlx, or media-info-wdx
+./build.sh         # → build/<Plugin>.wlx|wdx  (universal: arm64 + x86_64)
 # Quit Double Commander first (it rewrites its config on exit), then:
-./install.sh        # installs to ~/Library/Preferences/doublecmd/ and registers it
+./install.sh       # installs to ~/Library/Preferences/doublecmd/ and registers it
 ```
 
+Prebuilt bundles that need no Xcode are on the
+[releases page](https://github.com/NikolaiSachok/DC-plugins/releases): unzip,
+quit Double Commander, run `./install.sh`.
+
 Per-plugin details — supported extensions, how it works, uninstall — live in each
-plugin's own README (e.g. [`markdown-wlx/README.md`](markdown-wlx/README.md)).
+plugin's own README (e.g. [`book-wlx/README.md`](book-wlx/README.md)).
 
 ## What a "plugin" is here
 
 A Double Commander plugin is a native shared library with a fixed C entry-point
 table (the Total Commander plugin ABI). A **WLX** lister plugin like `markdown-wlx`
-is a `.wlx` Mach-O dylib exporting `ListLoad`, `ListLoadNext`, `ListCloseWindow`,
+or `book-wlx` is a `.wlx` Mach-O dylib exporting `ListLoad`, `ListLoadNext`, `ListCloseWindow`,
 `ListGetDetectString`, and `ListSetDefaultParams`. On macOS the window handles in
 that ABI are `NSView*`, so a viewer plugin builds an `NSView` (here, a `WKWebView`)
 and hands it back to DC. A **WDX** content plugin like `media-info-wdx` is a `.wdx`
@@ -85,6 +95,7 @@ Every plugin in this collection aims to hold the same bar:
 ```
 .
 ├── markdown-wlx/            # Markdown lister plugin (WLX): renders .md in the viewer
+├── book-wlx/                # e-book lister plugin (WLX): reads EPUB and FB2 books
 ├── media-info-wdx/          # media-metadata content plugin (WDX): dimensions, duration, …
 ├── docs/                    # cross-plugin docs (architecture, adding a plugin)
 ├── scripts/leak-guard.sh    # generic pre-publish safety gate

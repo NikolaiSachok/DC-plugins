@@ -7,7 +7,10 @@ metadata, and light / dark / sepia themes. Press **F3** on any `.epub`, `.fb2` o
 
 There was no e-book lister for Double Commander on macOS before this — the
 existing ones (EPUB Lister, eBookInfo, SumatraLister) are Windows PE plugins and
-cannot load into a Mach-O host. See [#19](https://github.com/NikolaiSachok/DC-plugins/issues/19).
+cannot load into a Mach-O host. See [#19](https://github.com/NikolaiSachok/DC-plugins/issues/19)
+and [#20](https://github.com/NikolaiSachok/DC-plugins/issues/20).
+
+![An EPUB open in Double Commander's viewer with BookView — contents sidebar on the left with the current chapter highlighted, chapter text set as a book with a pull quote, a plate with its caption, and a table](docs/screenshot.png)
 
 - **Contents sidebar** from the EPUB 3 `nav` document, the EPUB 2 NCX, or FB2
   section titles — nested, with the current chapter highlighted as you scroll

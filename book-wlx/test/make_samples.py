@@ -26,8 +26,24 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def png(width, height, rgb):
-    """A minimal solid-colour PNG — avoids depending on an imaging library."""
-    raw = b"".join(b"\x00" + bytes(rgb) * width for _ in range(height))
+    """A small PNG built by hand — avoids depending on an imaging library.
+
+    A vertical gradient with a horizon line rather than a flat fill: it reads as
+    a plate or a cover in the viewer, and gives the decoder real per-row data
+    instead of one repeated byte.
+    """
+    r, g, b = rgb
+    horizon = int(height * 0.62)
+    rows = []
+    for y in range(height):
+        t = y / max(1, height - 1)
+        if y == horizon:                       # a thin darker line
+            shade = 0.55
+        else:
+            shade = 1.15 - 0.5 * t             # light at the top, deeper below
+        px = bytes((min(255, int(c * shade)) for c in (r, g, b)))
+        rows.append(b"\x00" + px * width)
+    raw = b"".join(rows)
 
     def chunk(tag, data):
         body = tag + data
