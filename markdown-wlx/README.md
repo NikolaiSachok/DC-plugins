@@ -150,3 +150,7 @@ Double Commander does. Build them with:
   `keyDown:` reaches a `WKWebView` subclass and forwarding reaches the parent).
 - `test/scroll_verify.m` — scroll-restore regression: scroll a file, navigate away
   and back, assert the offset is restored.
+- `test/assets_verify.m` — asset-loading regression: stages the built plugin plus
+  its `assets/` into a directory WebKit's content process is sandboxed out of
+  (`~/Library/Preferences/…`, where DC installs plugins), loads it from there, and
+  asserts marked / DOMPurify / highlight.js are defined and the page rendered.

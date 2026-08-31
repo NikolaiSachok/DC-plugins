@@ -14,7 +14,7 @@
 #include <dlfcn.h>
 #include "listplug.h"
 
-#define MDV_VERSION "0.3.0"   /* single source of truth for the plugin version */
+#define MDV_VERSION "0.3.1"   /* single source of truth for the plugin version */
 
 #pragma mark - Helpers
 
@@ -28,13 +28,19 @@ static NSString *PluginDirectory(void) {
     return nil;
 }
 
-/* Absolute file:// URL string for an asset shipped next to the .wlx. */
-static NSString *AssetURL(NSString *name) {
+/* Directory holding the vendored libraries, beside the .wlx. */
+static NSString *AssetDirectory(void) {
     NSString *dir = PluginDirectory();
-    if (!dir) return @"";
-    NSString *path = [[dir stringByAppendingPathComponent:@"assets"]
-                         stringByAppendingPathComponent:name];
-    return [[NSURL fileURLWithPath:path] absoluteString];
+    return dir ? [dir stringByAppendingPathComponent:@"assets"] : nil;
+}
+
+/* URL for an asset shipped next to the .wlx. Deliberately *not* a file:// URL:
+ * WebKit's content process is sandboxed away from parts of the file system a
+ * plugin may legitimately live in (~/Library/Preferences/doublecmd/plugins is
+ * denied outright), so every asset is served by the plugin process itself
+ * through a private scheme instead. See MDAssetHandler below. */
+static NSString *AssetURL(NSString *name) {
+    return [@"x-mdview:///" stringByAppendingString:name];
 }
 
 #pragma mark - Configuration (optional MarkdownView.ini)
@@ -141,6 +147,94 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
 }
 @end
 
+#pragma mark - Asset scheme handler
+
+/* Serves the vendored assets (marked, DOMPurify, highlight.js, KaTeX + its
+ * fonts, Mermaid) out of the plugin's own `assets/` directory.
+ *
+ * A WKWebView cannot simply <script src="file://…"> them: the WebContent
+ * process runs in its own sandbox, and a plugin installed under
+ * ~/Library/Preferences/doublecmd/plugins is on the wrong side of it — the
+ * document loads, every library 404s, and the page dies with
+ * "Can't find variable: marked". Reading the bytes here and handing them back
+ * over a private scheme makes asset loading independent of where the .wlx sits.
+ *
+ * The handler is a fixed window onto one directory: the request path is
+ * resolved against `assets/` and rejected unless it stays inside it and carries
+ * a known asset extension, so a hostile document cannot walk out into the
+ * file system with it. */
+@interface MDAssetHandler : NSObject <WKURLSchemeHandler>
+@property (nonatomic, strong) NSMutableSet *liveTasks; /* main thread only */
+@end
+
+@implementation MDAssetHandler
+
+- (instancetype)init {
+    self = [super init];
+    if (self) _liveTasks = [NSMutableSet set];
+    return self;
+}
+
+static NSString *AssetMime(NSString *path) {
+    NSString *ext = [[path pathExtension] lowercaseString];
+    if ([ext isEqualToString:@"js"])    return @"text/javascript; charset=utf-8";
+    if ([ext isEqualToString:@"css"])   return @"text/css; charset=utf-8";
+    if ([ext isEqualToString:@"woff2"]) return @"font/woff2";
+    if ([ext isEqualToString:@"woff"])  return @"font/woff";
+    if ([ext isEqualToString:@"ttf"])   return @"font/ttf";
+    return nil; /* unknown extension -> not served */
+}
+
+/* Reply on the main queue, and only while the task is still live — WebKit
+ * raises if a stopped task is written to. */
+- (void)finishTask:(id<WKURLSchemeTask>)task data:(NSData *)data mime:(NSString *)mime {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (![self.liveTasks containsObject:task]) return;
+        [self.liveTasks removeObject:task];
+        /* The document itself is a file:// page, so its origin is "null" and
+         * KaTeX's @font-face requests arrive as CORS requests: without the
+         * wildcard the math renders in a fallback font. */
+        NSHTTPURLResponse *resp = [[NSHTTPURLResponse alloc]
+            initWithURL:task.request.URL
+             statusCode:data ? 200 : 404
+            HTTPVersion:@"HTTP/1.1"
+           headerFields:@{ @"Content-Type": mime ?: @"application/octet-stream",
+                           @"Content-Length": [@(data.length) stringValue],
+                           @"Access-Control-Allow-Origin": @"*",
+                           @"Cache-Control": @"no-store" }];
+        [task didReceiveResponse:resp];
+        [task didReceiveData:data ?: [NSData data]];
+        [task didFinish];
+    });
+}
+
+- (void)webView:(WKWebView *)webView startURLSchemeTask:(id<WKURLSchemeTask>)task {
+    [self.liveTasks addObject:task];
+
+    /* NSURL.path has already decoded the percent-encoding — decoding a second
+     * time would turn an escaped "%2e%2e" back into a "..". */
+    NSString *name = task.request.URL.path ?: @"";
+    while ([name hasPrefix:@"/"]) name = [name substringFromIndex:1];
+
+    NSString *root = [[AssetDirectory() stringByStandardizingPath] stringByResolvingSymlinksInPath];
+    NSString *mime = AssetMime(name);
+    NSString *full = (root.length && mime && name.length)
+        ? [[[root stringByAppendingPathComponent:name] stringByStandardizingPath]
+              stringByResolvingSymlinksInPath] : nil;
+
+    /* Must resolve to a real file *under* assets/ — no "..", no symlink out. */
+    NSString *dirPrefix = [root stringByAppendingString:@"/"];
+    NSData *data = (full && [full hasPrefix:dirPrefix]) ? [NSData dataWithContentsOfFile:full] : nil;
+
+    [self finishTask:task data:data mime:mime];
+}
+
+- (void)webView:(WKWebView *)webView stopURLSchemeTask:(id<WKURLSchemeTask>)task {
+    [self.liveTasks removeObject:task];
+}
+
+@end
+
 #pragma mark - MDView
 
 @class MDView;
@@ -154,6 +248,7 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
 @interface MDView : NSView
 @property (nonatomic, strong) WKWebView *web;
 @property (nonatomic, strong) MDScrollSink *sink;
+@property (nonatomic, strong) MDAssetHandler *assets;
 @property (nonatomic, copy)   NSString *tmpHTMLPath;
 @property (nonatomic, copy)   NSString *currentPath;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *scrollByPath;
@@ -183,6 +278,9 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
 
         WKWebViewConfiguration *cfg = [[WKWebViewConfiguration alloc] init];
         [cfg.userContentController addScriptMessageHandler:_sink name:@"dcmd"];
+
+        _assets = [[MDAssetHandler alloc] init];
+        [cfg setURLSchemeHandler:_assets forURLScheme:@"x-mdview"];
 
         _web = [[MDWebView alloc] initWithFrame:self.bounds configuration:cfg];
         _web.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
