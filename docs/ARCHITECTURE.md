@@ -40,11 +40,17 @@ way out and `CFBridgingRelease` in `ListCloseWindow`.
 
 1. `ListLoad` builds an `NSView` containing a `WKWebView`.
 2. It reads the Markdown file, base64-embeds it in a generated HTML document, and
-   references vendored assets (marked.js, highlight.js, GitHub CSS) by `file://`
-   URL — **never inlined**, because a minified library can contain a literal
+   references vendored assets (marked.js, highlight.js, GitHub CSS) by URL —
+   **never inlined**, because a minified library can contain a literal
    `</script>` that would truncate an inline `<script>` tag.
+   Those URLs are **not** `file://`: WebKit's content process is sandboxed out of
+   `~/Library/Preferences/doublecmd/plugins`, DC's own user-plugin directory, so a
+   `file://` asset silently 404s once the plugin is installed. The plugin reads the
+   bytes itself and serves them over a private `x-mdview://` scheme through a
+   `WKURLSchemeHandler` (`book-wlx` does the same for a book's own resources).
 3. The page is loaded via `loadFileURL:allowingReadAccessToURL:` with a `<base>`
-   set to the document's directory, so relative images resolve.
+   set to the document's directory, so the *user's* relative images resolve —
+   only the plugin's own assets move off `file://`.
 4. marked.js renders Markdown → HTML client-side; highlight.js colors code blocks;
    `prefers-color-scheme` drives light/dark live.
 

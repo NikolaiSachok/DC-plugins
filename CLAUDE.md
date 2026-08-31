@@ -76,6 +76,15 @@ history honest. (Examples: AVI codec → #12; Matroska playback lister → #14.)
   off-screen. Never gate progress, throttling, or incremental loading on a frame
   callback — an rAF-throttled handler that sets a "pending" flag never clears it and
   the view freezes. Use `setTimeout` for yielding and throttling.
+- **Never load a plugin's own assets over `file://`.** WebKit's WebContent process
+  is sandboxed away from parts of the file system a plugin legitimately lives in —
+  `~/Library/Preferences/doublecmd/plugins`, DC's own user-plugin directory, is
+  denied outright (macOS 26). The document still loads, so the failure looks like a
+  JS bug: `ReferenceError: Can't find variable: marked`. Read asset bytes in the
+  plugin process and serve them through a `WKURLSchemeHandler` on a private scheme
+  (`x-mdview://`, `x-book://`). A file:// document may still keep a file base URL
+  for the *user's* relative resources; cross-origin fonts then need
+  `Access-Control-Allow-Origin: *` from the handler.
 
 ### Esc must close the viewer — every WLX plugin, every time
 `WKWebView` swallows the Escape key, so a viewer plugin that does nothing about it

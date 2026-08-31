@@ -6,6 +6,20 @@ independently and tagged below.
 
 ## [Unreleased]
 
+## markdown-wlx 0.3.1 — 2026-08-31
+
+### Fixed
+- **markdown-wlx:** the preview died with `ReferenceError: Can't find variable: marked`
+  on macOS 26 — every vendored library (marked, DOMPurify, highlight.js, KaTeX,
+  Mermaid) failed to load. The plugin referenced them as `file://` URLs, and
+  WebKit's WebContent process is sandboxed out of
+  `~/Library/Preferences/doublecmd/plugins`, which is exactly where Double
+  Commander keeps user plugins: the document loaded, every `<script>` 404'd.
+  Assets are now read by the plugin process and served over a private
+  `x-mdview://` scheme, the same way book-wlx serves a book, so rendering no
+  longer depends on where the `.wlx` is installed. Relative images beside the
+  Markdown file keep loading as before.
+
 ## book-wlx 0.1.0 — 2026-08-09
 
 ### Added
