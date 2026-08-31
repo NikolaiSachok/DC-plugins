@@ -27,7 +27,10 @@ Per change, in order:
    absolute paths, no business/domain terms (this is a public repo; the gate stays
    generic on purpose). For larger content changes, also run the `audit-repo-for-leaks`
    skill before pushing.
-7. **Ship** — push via **SSH**; issues/releases via `gh`. End commit messages with the
+7. **Ship** — push over **HTTPS with the `gh` token**
+   (`git -c credential.helper='!gh auth git-credential' push https://github.com/<owner>/<repo>.git HEAD:<branch>`);
+   issues/PRs/releases via `gh`. Do **not** reach for SSH — this machine's key is not
+   on the account. End commit messages with the
    `Co-Authored-By:` trailer. Bump the plugin's `VERSION` constant (single source of
    truth, must equal the tag), update `CHANGELOG.md`, then tag `<plugin>-vX.Y.Z` — the
    release workflow builds the universal binary and publishes a no-Xcode install bundle.
