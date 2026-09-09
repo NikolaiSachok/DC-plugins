@@ -7,6 +7,8 @@
  *
  * This loads the real .wlx into a parent view standing in for DC's viewer, drives
  * the actual ABI the way DC does, and asserts the system clipboard really changed.
+ * It covers both flows: Cmd+A then Cmd+C, and the one actually reported in #25 —
+ * a selection made with the mouse, then Cmd+C on its own.
  *
  * Note this is a regression net, not proof: per the charter, host key dispatch is
  * confirmed by pressing Cmd+C in a real Double Commander. */
@@ -25,13 +27,17 @@ typedef int  (*ListSendCommand_t)(HWND, int, int);
 #define lc_setpercent    4
 
 /* Text that must be on screen before copying means anything. */
-#define MARKER    @"The Harbour"
-#define READY_MAX 60          /* × 250 ms = 15 s ceiling */
+#define MARKER      @"The Harbour"
+/* Page chrome that must never reach the clipboard: the toolbar, contents sidebar and version badge sit outside
+ * the content element and carries user-select:none, which a programmatic
+ * -[WKWebView selectAll:] would ignore. */
+#define CHROME      @"BookView v"
+#define CONTENT_ID  "book"
 
 static int gFailures = 0;
 
 static void check(BOOL cond, const char *what) {
-    printf("  %-52s %s\n", what, cond ? "ok" : "FAILED");
+    printf("  %-56s %s\n", what, cond ? "ok" : "FAILED");
     if (!cond) gFailures++;
 }
 
@@ -44,20 +50,28 @@ static WKWebView *FindWebView(NSView *root) {
     return nil;
 }
 
-/* Wait for the document to actually render rather than sleeping a fixed amount.
- * A fixed delay is flaky: rendering a book means unzipping, parsing and
- * sanitising it, which is slower on a loaded machine or right after another
- * harness has run. */
-static void WhenRendered(WKWebView *web, int attemptsLeft, void (^then)(BOOL)) {
+/* Poll a JS predicate until it is true. Used instead of a fixed sleep: rendering
+ * means unzipping, parsing and sanitising, which is slower on a loaded machine or
+ * straight after another harness has run. */
+static void PollJS(WKWebView *web, NSString *js, int attemptsLeft, void (^then)(BOOL)) {
     if (attemptsLeft <= 0) { then(NO); return; }
-    [web evaluateJavaScript:@"document.body ? document.body.innerText : ''"
-          completionHandler:^(id result, NSError *err) {
+    [web evaluateJavaScript:js completionHandler:^(id result, NSError *err) {
         (void)err;
-        NSString *text = [result isKindOfClass:[NSString class]] ? result : @"";
-        if ([text containsString:MARKER]) { then(YES); return; }
+        if ([result respondsToSelector:@selector(boolValue)] && [result boolValue]) { then(YES); return; }
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
-          dispatch_get_main_queue(), ^{ WhenRendered(web, attemptsLeft - 1, then); });
+          dispatch_get_main_queue(), ^{ PollJS(web, js, attemptsLeft - 1, then); });
     }];
+}
+
+/* Wait for the pasteboard to change: -copy: is async IPC to the WebContent
+ * process, so there is nothing to synchronously wait on. */
+static void WhenPasteboardChanges(NSPasteboard *pb, NSInteger before,
+                                  int attemptsLeft, void (^then)(void)) {
+    if (pb.changeCount != before || attemptsLeft <= 0) { then(); return; }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
+      dispatch_get_main_queue(), ^{
+        WhenPasteboardChanges(pb, before, attemptsLeft - 1, then);
+    });
 }
 
 int main(int argc, char **argv) { @autoreleasepool {
@@ -103,10 +117,31 @@ int main(int argc, char **argv) { @autoreleasepool {
             context:nil subtype:0 data1:0 data2:0] atStart:YES];
     };
 
-    WhenRendered(web, READY_MAX, ^(BOOL rendered) {
+    /* Issue lc_copy and hand the resulting clipboard text to `then`. */
+    void (^copyThen)(void (^)(NSString *)) = ^(void (^then)(NSString *)) {
+        [pb clearContents];
+        [pb setString:@"SENTINEL_NOT_COPIED" forType:NSPasteboardTypeString];
+        NSInteger before = pb.changeCount;
+        check(ListSendCommand(pw, lc_copy, 0) == LISTPLUGIN_OK, "lc_copy returns LISTPLUGIN_OK");
+        WhenPasteboardChanges(pb, before, 20, ^{
+            then([pb stringForType:NSPasteboardTypeString] ?: @"");
+        });
+    };
+
+    NSString *rendered = @"(function(){var c=document.getElementById('" @CONTENT_ID
+                         @"');return !!c&&c.children.length>0;})()";
+    NSString *hasSelection = @"(function(){var s=window.getSelection();"
+                             @"return !!s&&s.toString().trim().length>0;})()";
+    /* Stand in for a mouse drag: select one element inside the content. */
+    NSString *selectOne = @"(function(){var c=document.getElementById('" @CONTENT_ID @"');"
+                          @"var p=c&&c.querySelector('p');if(!p)return false;"
+                          @"var s=window.getSelection();s.removeAllRanges();"
+                          @"s.selectAllChildren(p);return true;})()";
+
+    PollJS(web, rendered, 60, ^(BOOL ok) {
         printf("ListSendCommand:\n");
-        check(rendered, "document rendered before copying");
-        if (!rendered) { finish(); return; }
+        check(ok, "document rendered before copying");
+        if (!ok) { finish(); return; }
 
         /* A command we do not handle must report ERROR so DC can fall back. */
         check(ListSendCommand(pw, lc_setpercent, 50) == LISTPLUGIN_ERROR,
@@ -114,34 +149,33 @@ int main(int argc, char **argv) { @autoreleasepool {
         check(ListSendCommand(NULL, lc_copy, 0) == LISTPLUGIN_ERROR,
               "NULL window returns LISTPLUGIN_ERROR");
 
-        /* Sentinel so a no-op copy cannot masquerade as a pass. */
-        [pb clearContents];
-        [pb setString:@"SENTINEL_NOT_COPIED" forType:NSPasteboardTypeString];
-        NSInteger before = pb.changeCount;
-
+        /* Flow 1 — Cmd+A then Cmd+C. */
         check(ListSendCommand(pw, lc_selectall, 0) == LISTPLUGIN_OK,
               "lc_selectall returns LISTPLUGIN_OK");
-        check(ListSendCommand(pw, lc_copy, 0) == LISTPLUGIN_OK,
-              "lc_copy returns LISTPLUGIN_OK");
+        PollJS(web, hasSelection, 40, ^(BOOL selected) {
+            check(selected, "lc_selectall actually selects the document");
+            copyThen(^(NSString *all) {
+                check(![all isEqualToString:@"SENTINEL_NOT_COPIED"], "clipboard actually changed");
+                check([all containsString:MARKER], "clipboard holds the rendered book text");
+                check(![all containsString:CHROME], "version badge is NOT copied");
+                check(![all containsString:@"Contents"], "contents sidebar is NOT copied");
+                if (gFailures) printf("  clipboard was: %.200s\n", all.UTF8String);
 
-        /* WebKit completes the copy on a later turn of the run loop; poll the
-         * pasteboard change count rather than guessing how long that takes. */
-        __block int waits = 20; /* × 100 ms */
-        __block void (^poll)(void);
-        poll = ^{
-            if (pb.changeCount == before && waits-- > 0) {
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
-                  dispatch_get_main_queue(), poll);
-                return;
-            }
-            NSString *got = [pb stringForType:NSPasteboardTypeString] ?: @"";
-            check(![got isEqualToString:@"SENTINEL_NOT_COPIED"], "clipboard actually changed");
-            check([got containsString:MARKER], "clipboard holds the rendered book text");
-            if (gFailures) printf("  clipboard was: %.120s\n", got.UTF8String);
-            poll = nil;
-            finish();
-        };
-        poll();
+                /* Flow 2 — the bug as reported in #25: select with the mouse,
+                 * then press Cmd+C on its own, with no preceding Select All. */
+                PollJS(web, selectOne, 20, ^(BOOL one) {
+                    check(one, "a selection can be made without lc_selectall");
+                    copyThen(^(NSString *part) {
+                        check(part.length > 0 && ![part isEqualToString:@"SENTINEL_NOT_COPIED"],
+                              "Cmd+C alone copies an existing selection");
+                        check(part.length < all.length,
+                              "it copies only the selection, not the document");
+                        if (gFailures) printf("  partial was: %.200s\n", part.UTF8String);
+                        finish();
+                    });
+                });
+            });
+        });
     });
 
     [app run];

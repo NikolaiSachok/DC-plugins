@@ -46,6 +46,14 @@ swallows Escape and DC's viewer then won't close. Copy the `-keyDown:` override 
 still press Esc in the real Double Commander before shipping — the mock passes either
 way. CLAUDE.md has the full note.
 
+**It also needs `ListSendCommand`.** DC handles Cmd+C and Cmd+A itself and routes
+them through that entry point (`lc_copy`, `lc_selectall`); without it the user can
+select text and copy nothing, with no error. Copy the implementation from
+`markdown-wlx/MarkdownView.m` or `book-wlx/BookView.m` — note it selects the content
+element's children rather than calling `-[WKWebView selectAll:]`, which would sweep
+the page chrome into the clipboard — and ship `test/copy_verify.m`. CLAUDE.md has
+the full note.
+
 ## 4. Register & verify live
 
 `install.sh` should be idempotent, back up `doublecmd.xml`, and place the entry so

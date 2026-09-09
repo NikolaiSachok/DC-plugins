@@ -670,10 +670,23 @@ void __stdcall ListCloseWindow(HWND ListWin) {
  * this export both keys are silently dead (DC's CallListSendCommand returns
  * LISTPLUGIN_ERROR and swallows it).
  *
- * WKWebView already implements the standard NSResponder editing actions, so both
- * commands map straight onto it and complete synchronously. An -evaluateJavaScript:
- * round-trip would not work here: it is asynchronous and this ABI has to return a
- * result immediately. */
+ * Select All deliberately does NOT use -[WKWebView selectAll:]: that selects the
+ * whole document, so the toolbar, the contents sidebar, the progress percentage
+ * and the version badge would all be pasted along with the prose. (Marking them
+ * `user-select:none` in reader.css does not help — a programmatic selectAll
+ * ignores that.) Selecting the book element's children instead keeps the
+ * clipboard to what the reader came for.
+ *
+ * The return value says the command was accepted, not that anything was copied:
+ * -copy: is asynchronous IPC to the WebContent process and there is nothing to
+ * wait on here, so Cmd+C with an empty selection still reports OK. DC ignores the
+ * result for these two commands; unhandled commands report ERROR so it can fall
+ * back. */
+static NSString *const kBKSelectContentJS =
+    @"(function(){var el=document.getElementById('book');if(!el)return false;"
+     @"var s=window.getSelection();if(!s)return false;"
+     @"s.removeAllRanges();s.selectAllChildren(el);return true;})()";
+
 __attribute__((visibility("default")))
 int __stdcall ListSendCommand(HWND ListWin, int Command, int Parameter) {
     (void)Parameter;
@@ -686,12 +699,15 @@ int __stdcall ListSendCommand(HWND ListWin, int Command, int Parameter) {
 
     __block int rc = LISTPLUGIN_ERROR;
     void (^run)(void) = ^{
-        /* id rather than WKWebView *: the standard editing actions are an
-         * informal responder protocol, not declared on WKWebView itself. */
-        id web = view.web;
-        SEL action = (Command == lc_copy) ? @selector(copy:) : @selector(selectAll:);
-        if (!web || ![web respondsToSelector:action]) return;
-        if (Command == lc_copy) [web copy:nil]; else [web selectAll:nil];
+        WKWebView *web = view.web;
+        if (!web) return;
+        if (Command == lc_copy) {
+            /* cast to id: -copy: is an informal responder protocol, not declared
+             * on WKWebView itself. */
+            [(id)web copy:nil];
+        } else {
+            [web evaluateJavaScript:kBKSelectContentJS completionHandler:nil];
+        }
         rc = LISTPLUGIN_OK;
     };
     if ([NSThread isMainThread]) run();

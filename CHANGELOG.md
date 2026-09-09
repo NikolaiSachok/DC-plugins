@@ -6,18 +6,30 @@ independently and tagged below.
 
 ## [Unreleased]
 
-## markdown-wlx 0.3.2 / book-wlx 0.1.1 — 2026-09-10
+## markdown-wlx 0.3.2 — 2026-09-10
 
 ### Fixed
-- **markdown-wlx, book-wlx:** Cmd+C copied nothing and Cmd+A selected nothing in
-  the F3 viewer — text highlighted with the mouse, but the clipboard never
-  changed and no error appeared. Double Commander binds both keys on its own
-  Viewer form and, when a plugin owns the window, dispatches them through the WLX
-  ABI (`cm_CopyToClipboard` → `lc_copy`, `cm_SelectAll` → `lc_selectall`) rather
-  than delivering them to the plugin's web view. Neither plugin exported
+- **markdown-wlx:** Cmd+C copied nothing and Cmd+A selected nothing in the F3
+  viewer — text highlighted with the mouse, but the clipboard never changed and
+  no error appeared. Double Commander binds both keys on its own Viewer form and,
+  when a plugin owns the window, dispatches them through the WLX ABI
+  (`cm_CopyToClipboard` → `lc_copy`, `cm_SelectAll` → `lc_selectall`) rather than
+  delivering them to the plugin's web view. The plugin did not export
   `ListSendCommand`, so DC's `CallListSendCommand` returned `LISTPLUGIN_ERROR`
-  and swallowed the keystroke. Both plugins now export it and map the two
-  commands onto `WKWebView`'s standard editing actions. Closes #25.
+  and swallowed the keystroke. It now exports the entry point; Select All covers
+  the rendered document only, so the version badge no longer lands in the
+  clipboard. Closes #25.
+
+## book-wlx 0.1.1 — 2026-09-10
+
+### Fixed
+- **book-wlx:** Cmd+C copied nothing and Cmd+A selected nothing in the F3 viewer,
+  for the same reason as markdown-wlx 0.3.2 above — Double Commander routes both
+  keys through `ListSendCommand`, which the plugin did not export, and swallows
+  the keystroke when it is missing. The plugin now exports it. Select All covers
+  the book text only, so the toolbar, the contents sidebar, the progress
+  percentage and the version badge are no longer pasted along with the prose.
+  Closes #25.
 
 ## markdown-wlx 0.3.1 — 2026-08-31
 

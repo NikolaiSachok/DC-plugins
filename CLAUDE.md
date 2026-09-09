@@ -104,6 +104,25 @@ not as a bug to rediscover:
    and still failed in the app. Before shipping, press Esc in the real Double
    Commander with the plugin registered.
 
+### Cmd+C / Cmd+A go through `ListSendCommand`, not the web view
+Same shape as the Esc lesson, and it had bitten **both** web-view listers before it
+was found: DC binds Cmd+C and Cmd+A on its own **Viewer form** and, when a plugin
+owns the window, dispatches them through the WLX ABI — `cm_CopyToClipboard` →
+`lc_copy`, `cm_SelectAll` → `lc_selectall` (`fviewer.pas`) — instead of delivering
+them to the plugin's view. `CallListSendCommand` returns `LISTPLUGIN_ERROR` and
+swallows the keystroke when the plugin does not export the entry point, so the
+symptom is *silent*: text selects, Cmd+C copies nothing, no error anywhere.
+
+1. Export `ListSendCommand`; map `lc_copy` onto `-[WKWebView copy:]`.
+2. For `lc_selectall`, select the **content element's children** via JS — *not*
+   `-[WKWebView selectAll:]`, which selects the whole document and sweeps the
+   toolbar, sidebar and version badge into the clipboard. A `user-select:none` in
+   CSS does not stop a programmatic `selectAll`.
+3. The return value means "command accepted", not "text was copied": `-copy:` is
+   async IPC to the WebContent process and there is nothing to wait on.
+4. Ship `test/copy_verify.m` and keep it green. Note the local `listplug.h` is a
+   trimmed copy — add the `lc_*` constants when you add the entry point.
+
 ## Per-plugin checklist (for a new plugin, e.g. image-view)
 Each plugin directory owns: `build.sh` (universal + ad-hoc sign), `install.sh`
 (idempotent, prebuilt-bundle aware, backs up `doublecmd.xml`), `register_plugin.py` if
