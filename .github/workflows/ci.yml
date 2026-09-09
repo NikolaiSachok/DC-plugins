@@ -35,7 +35,7 @@ jobs:
         working-directory: markdown-wlx
         run: |
           for sym in _ListLoad _ListLoadNext _ListCloseWindow \
-                     _ListGetDetectString _ListSetDefaultParams; do
+                     _ListGetDetectString _ListSetDefaultParams _ListSendCommand; do
             nm -gU build/MarkdownView.wlx | grep -q " T $sym" \
               || { echo "missing export: $sym"; exit 1; }
           done
@@ -60,7 +60,7 @@ jobs:
         working-directory: book-wlx
         run: |
           for sym in _ListLoad _ListLoadNext _ListCloseWindow \
-                     _ListGetDetectString _ListSetDefaultParams; do
+                     _ListGetDetectString _ListSetDefaultParams _ListSendCommand; do
             nm -gU build/BookView.wlx | grep -q " T $sym" \
               || { echo "missing export: $sym"; exit 1; }
           done

@@ -24,6 +24,15 @@ typedef void *HWND;
 #define lcp_variable    32
 #define lcp_forceshow   64
 
+/* ListSendCommand commands. Double Commander's viewer routes its own Cmd+C /
+ * Cmd+A hotkeys here when a plugin owns the window (fviewer.pas: cm_CopyToClipboard
+ * -> lc_copy, cm_SelectAll -> lc_selectall) — a plugin that does not export
+ * ListSendCommand makes those keys silently dead. */
+#define lc_copy          1
+#define lc_newparams     2
+#define lc_selectall     3
+#define lc_setpercent    4
+
 typedef struct {
     int   size;
     uint32_t PluginInterfaceVersionLow;

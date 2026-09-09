@@ -14,7 +14,7 @@
 #include <dlfcn.h>
 #include "listplug.h"
 
-#define MDV_VERSION "0.3.1"   /* single source of truth for the plugin version */
+#define MDV_VERSION "0.3.2"   /* single source of truth for the plugin version */
 
 #pragma mark - Helpers
 
@@ -483,6 +483,40 @@ void __stdcall ListCloseWindow(HWND ListWin) {
     };
     if ([NSThread isMainThread]) close();
     else dispatch_sync(dispatch_get_main_queue(), close);
+}
+
+/* Double Commander binds Cmd+C / Cmd+A on its own Viewer form and, when a plugin
+ * owns the window, dispatches them here rather than to our web view — so without
+ * this export both keys are silently dead (DC's CallListSendCommand returns
+ * LISTPLUGIN_ERROR and swallows it).
+ *
+ * WKWebView already implements the standard NSResponder editing actions, so both
+ * commands map straight onto it and complete synchronously. An -evaluateJavaScript:
+ * round-trip would not work here: it is asynchronous and this ABI has to return a
+ * result immediately. */
+__attribute__((visibility("default")))
+int __stdcall ListSendCommand(HWND ListWin, int Command, int Parameter) {
+    (void)Parameter;
+    if (!ListWin) return LISTPLUGIN_ERROR;
+    MDView *view = (__bridge MDView *)ListWin;
+    if (![view isKindOfClass:[MDView class]]) return LISTPLUGIN_ERROR;
+
+    if (Command != lc_copy && Command != lc_selectall)
+        return LISTPLUGIN_ERROR; /* unhandled — let DC fall back */
+
+    __block int rc = LISTPLUGIN_ERROR;
+    void (^run)(void) = ^{
+        /* id rather than WKWebView *: the standard editing actions are an
+         * informal responder protocol, not declared on WKWebView itself. */
+        id web = view.web;
+        SEL action = (Command == lc_copy) ? @selector(copy:) : @selector(selectAll:);
+        if (!web || ![web respondsToSelector:action]) return;
+        if (Command == lc_copy) [web copy:nil]; else [web selectAll:nil];
+        rc = LISTPLUGIN_OK;
+    };
+    if ([NSThread isMainThread]) run();
+    else dispatch_sync(dispatch_get_main_queue(), run);
+    return rc;
 }
 
 __attribute__((visibility("default")))

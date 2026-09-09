@@ -144,6 +144,9 @@ Double Commander does. Build them with:
 - `test/test_host.m` — render smoke test: loads the plugin, renders `test/sample.md`,
   asserts content rendered (`RESULT: PASS`).
 - `test/snap_host.m` — saves a PNG snapshot of the rendered output.
+- `test/copy_verify.m` — regression for the `ListSendCommand` export: drives
+  `lc_selectall` + `lc_copy` the way DC's viewer does and asserts the system
+  clipboard really changed (the user's clipboard is saved and restored).
 - `test/esc_verify.m` — end-to-end regression for the Escape-key fix: focuses the
   web view, sends Escape, asserts it reaches the host (so the viewer closes).
 - `test/esc_probe.m` — the diagnostic probe used to find the root cause (whether
