@@ -224,7 +224,7 @@ in the samples (inline `<script>`, an `onerror` handler, a remote image, an
 DC's viewer does, and asserts the system clipboard really changed — Double Commander
 handles those two keys itself and dispatches them through the ABI, so a plugin that
 does not export the entry point leaves both silently dead. The harness saves and
-restores whatever the user had on the clipboard.
+restores a text clipboard.
 
 `esc_verify.m` checks that Escape is re-posted to the host so the viewer closes.
 It is a regression net, not proof — Double Commander is a Lazarus/LCL app and a

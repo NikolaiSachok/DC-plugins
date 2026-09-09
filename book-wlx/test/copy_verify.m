@@ -24,11 +24,40 @@ typedef int  (*ListSendCommand_t)(HWND, int, int);
 #define lc_selectall     3
 #define lc_setpercent    4
 
+/* Text that must be on screen before copying means anything. */
+#define MARKER    @"The Harbour"
+#define READY_MAX 60          /* × 250 ms = 15 s ceiling */
+
 static int gFailures = 0;
 
 static void check(BOOL cond, const char *what) {
     printf("  %-52s %s\n", what, cond ? "ok" : "FAILED");
     if (!cond) gFailures++;
+}
+
+static WKWebView *FindWebView(NSView *root) {
+    if ([root isKindOfClass:[WKWebView class]]) return (WKWebView *)root;
+    for (NSView *v in root.subviews) {
+        WKWebView *found = FindWebView(v);
+        if (found) return found;
+    }
+    return nil;
+}
+
+/* Wait for the document to actually render rather than sleeping a fixed amount.
+ * A fixed delay is flaky: rendering a book means unzipping, parsing and
+ * sanitising it, which is slower on a loaded machine or right after another
+ * harness has run. */
+static void WhenRendered(WKWebView *web, int attemptsLeft, void (^then)(BOOL)) {
+    if (attemptsLeft <= 0) { then(NO); return; }
+    [web evaluateJavaScript:@"document.body ? document.body.innerText : ''"
+          completionHandler:^(id result, NSError *err) {
+        (void)err;
+        NSString *text = [result isKindOfClass:[NSString class]] ? result : @"";
+        if ([text containsString:MARKER]) { then(YES); return; }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
+          dispatch_get_main_queue(), ^{ WhenRendered(web, attemptsLeft - 1, then); });
+    }];
 }
 
 int main(int argc, char **argv) { @autoreleasepool {
@@ -56,14 +85,28 @@ int main(int argc, char **argv) { @autoreleasepool {
     if (!pw) { fprintf(stderr, "ListLoad returned NULL\n"); return 2; }
     [win makeKeyAndOrderFront:nil];
 
+    WKWebView *web = FindWebView((__bridge NSView *)pw);
+    if (!web) { fprintf(stderr, "no WKWebView in the plugin view\n"); return 2; }
+
     /* Be a good citizen: this drives the real system pasteboard, so put back
-     * whatever the user had on it when we are done. */
+     * whatever text the user had on it when we are done. Non-text contents
+     * (an image, say) cannot be restored this way and are left alone. */
     NSPasteboard *pb = [NSPasteboard generalPasteboard];
     NSString *saved = [pb stringForType:NSPasteboardTypeString];
 
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.5 * NSEC_PER_SEC)),
-      dispatch_get_main_queue(), ^{
+    void (^finish)(void) = ^{
+        if (saved) { [pb clearContents]; [pb setString:saved forType:NSPasteboardTypeString]; }
+        printf(gFailures ? "RESULT: FAIL (%d)\n" : "RESULT: PASS\n", gFailures);
+        [app stop:nil];
+        [NSApp postEvent:[NSEvent otherEventWithType:NSEventTypeApplicationDefined
+            location:NSZeroPoint modifierFlags:0 timestamp:0 windowNumber:0
+            context:nil subtype:0 data1:0 data2:0] atStart:YES];
+    };
+
+    WhenRendered(web, READY_MAX, ^(BOOL rendered) {
         printf("ListSendCommand:\n");
+        check(rendered, "document rendered before copying");
+        if (!rendered) { finish(); return; }
 
         /* A command we do not handle must report ERROR so DC can fall back. */
         check(ListSendCommand(pw, lc_setpercent, 50) == LISTPLUGIN_ERROR,
@@ -74,30 +117,31 @@ int main(int argc, char **argv) { @autoreleasepool {
         /* Sentinel so a no-op copy cannot masquerade as a pass. */
         [pb clearContents];
         [pb setString:@"SENTINEL_NOT_COPIED" forType:NSPasteboardTypeString];
+        NSInteger before = pb.changeCount;
 
         check(ListSendCommand(pw, lc_selectall, 0) == LISTPLUGIN_OK,
               "lc_selectall returns LISTPLUGIN_OK");
         check(ListSendCommand(pw, lc_copy, 0) == LISTPLUGIN_OK,
               "lc_copy returns LISTPLUGIN_OK");
 
-        /* WebKit completes the copy on its own turn of the run loop. */
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)),
-          dispatch_get_main_queue(), ^{
+        /* WebKit completes the copy on a later turn of the run loop; poll the
+         * pasteboard change count rather than guessing how long that takes. */
+        __block int waits = 20; /* × 100 ms */
+        __block void (^poll)(void);
+        poll = ^{
+            if (pb.changeCount == before && waits-- > 0) {
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)),
+                  dispatch_get_main_queue(), poll);
+                return;
+            }
             NSString *got = [pb stringForType:NSPasteboardTypeString] ?: @"";
-            check(![got isEqualToString:@"SENTINEL_NOT_COPIED"],
-                  "clipboard actually changed");
-            check([got containsString:@"The Harbour"],
-                  "clipboard holds the rendered book text");
+            check(![got isEqualToString:@"SENTINEL_NOT_COPIED"], "clipboard actually changed");
+            check([got containsString:MARKER], "clipboard holds the rendered book text");
             if (gFailures) printf("  clipboard was: %.120s\n", got.UTF8String);
-
-            if (saved) { [pb clearContents]; [pb setString:saved forType:NSPasteboardTypeString]; }
-            printf(gFailures ? "RESULT: FAIL (%d)\n" : "RESULT: PASS\n", gFailures);
-
-            [app stop:nil];
-            [NSApp postEvent:[NSEvent otherEventWithType:NSEventTypeApplicationDefined
-                location:NSZeroPoint modifierFlags:0 timestamp:0 windowNumber:0
-                context:nil subtype:0 data1:0 data2:0] atStart:YES];
-        });
+            poll = nil;
+            finish();
+        };
+        poll();
     });
 
     [app run];
