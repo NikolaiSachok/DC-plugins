@@ -202,6 +202,10 @@ clang -fobjc-arc -framework Cocoa -framework WebKit -o build/test_host test/test
 clang -fobjc-arc -framework Cocoa -framework WebKit -o build/esc_verify test/esc_verify.m
 ./build/esc_verify build/BookView.wlx build/samples/sample3.epub
 
+# Cmd+C / Cmd+A reach the web view through the WLX ABI
+clang -fobjc-arc -framework Cocoa -framework WebKit -o build/copy_verify test/copy_verify.m
+./build/copy_verify build/BookView.wlx build/samples/sample2.epub
+
 # Visual check: render a book and save a PNG
 clang -fobjc-arc -framework Cocoa -framework WebKit -o build/snap_host test/snap_host.m
 ./build/snap_host build/BookView.wlx build/samples/sample3.epub build/shot.png 0 1100 860
@@ -215,6 +219,12 @@ chapter and a `windows-1251` FictionBook decode, that FB2 epigraphs, poems, cite
 tables, base64 images and footnote jumps are mapped, and that the hostile content
 in the samples (inline `<script>`, an `onerror` handler, a remote image, an
 `<iframe>`) reaches the page as inert text.
+
+`copy_verify.m` drives `ListSendCommand` with `lc_selectall` and `lc_copy` the way
+DC's viewer does, and asserts the system clipboard really changed — Double Commander
+handles those two keys itself and dispatches them through the ABI, so a plugin that
+does not export the entry point leaves both silently dead. The harness saves and
+restores a text clipboard.
 
 `esc_verify.m` checks that Escape is re-posted to the host so the viewer closes.
 It is a regression net, not proof — Double Commander is a Lazarus/LCL app and a

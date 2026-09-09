@@ -36,7 +36,7 @@
 #include "listplug.h"
 #include "zipreader.h"
 
-#define BKV_VERSION "0.1.0"   /* single source of truth for the plugin version */
+#define BKV_VERSION "0.1.1"   /* single source of truth for the plugin version */
 
 /* Reserved first path segment for the reader's own assets. Checked before the
  * ZIP, so a book cannot shadow the reader's stylesheet or script. */
@@ -663,6 +663,56 @@ void __stdcall ListCloseWindow(HWND ListWin) {
     };
     if ([NSThread isMainThread]) close();
     else dispatch_sync(dispatch_get_main_queue(), close);
+}
+
+/* Double Commander binds Cmd+C / Cmd+A on its own Viewer form and, when a plugin
+ * owns the window, dispatches them here rather than to our web view — so without
+ * this export both keys are silently dead (DC's CallListSendCommand returns
+ * LISTPLUGIN_ERROR and swallows it).
+ *
+ * Select All deliberately does NOT use -[WKWebView selectAll:]: that selects the
+ * whole document, so the toolbar, the contents sidebar, the progress percentage
+ * and the version badge would all be pasted along with the prose. (Marking them
+ * `user-select:none` in reader.css does not help — a programmatic selectAll
+ * ignores that.) Selecting the book element's children instead keeps the
+ * clipboard to what the reader came for.
+ *
+ * The return value says the command was accepted, not that anything was copied:
+ * -copy: is asynchronous IPC to the WebContent process and there is nothing to
+ * wait on here, so Cmd+C with an empty selection still reports OK. DC ignores the
+ * result for these two commands; unhandled commands report ERROR so it can fall
+ * back. */
+static NSString *const kBKSelectContentJS =
+    @"(function(){var el=document.getElementById('book');if(!el)return false;"
+     @"var s=window.getSelection();if(!s)return false;"
+     @"s.removeAllRanges();s.selectAllChildren(el);return true;})()";
+
+__attribute__((visibility("default")))
+int __stdcall ListSendCommand(HWND ListWin, int Command, int Parameter) {
+    (void)Parameter;
+    if (!ListWin) return LISTPLUGIN_ERROR;
+    BKView *view = (__bridge BKView *)ListWin;
+    if (![view isKindOfClass:[BKView class]]) return LISTPLUGIN_ERROR;
+
+    if (Command != lc_copy && Command != lc_selectall)
+        return LISTPLUGIN_ERROR; /* unhandled — let DC fall back */
+
+    __block int rc = LISTPLUGIN_ERROR;
+    void (^run)(void) = ^{
+        WKWebView *web = view.web;
+        if (!web) return;
+        if (Command == lc_copy) {
+            /* cast to id: -copy: is an informal responder protocol, not declared
+             * on WKWebView itself. */
+            [(id)web copy:nil];
+        } else {
+            [web evaluateJavaScript:kBKSelectContentJS completionHandler:nil];
+        }
+        rc = LISTPLUGIN_OK;
+    };
+    if ([NSThread isMainThread]) run();
+    else dispatch_sync(dispatch_get_main_queue(), run);
+    return rc;
 }
 
 __attribute__((visibility("default")))

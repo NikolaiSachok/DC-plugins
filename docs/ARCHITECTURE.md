@@ -18,7 +18,12 @@ those by name. There are four families:
 | WFX | `.wfx` | Virtual file systems |
 
 A WLX plugin exports: `ListLoad`, `ListLoadNext`, `ListCloseWindow`,
-`ListGetDetectString`, `ListSetDefaultParams`.
+`ListGetDetectString`, `ListSetDefaultParams`, `ListSendCommand`.
+
+`ListSendCommand` is easy to miss and not optional in practice: Double Commander
+binds Cmd+C and Cmd+A on its own Viewer form and, when a plugin owns the window,
+dispatches them through this entry point rather than to the plugin's view. A
+plugin that does not export it leaves both keys silently dead.
 
 ## WLX on macOS
 

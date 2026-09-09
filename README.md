@@ -65,7 +65,7 @@ plugin's own README (e.g. [`book-wlx/README.md`](book-wlx/README.md)).
 A Double Commander plugin is a native shared library with a fixed C entry-point
 table (the Total Commander plugin ABI). A **WLX** lister plugin like `markdown-wlx`
 or `book-wlx` is a `.wlx` Mach-O dylib exporting `ListLoad`, `ListLoadNext`, `ListCloseWindow`,
-`ListGetDetectString`, and `ListSetDefaultParams`. On macOS the window handles in
+`ListGetDetectString`, `ListSetDefaultParams`, and `ListSendCommand`. On macOS the window handles in
 that ABI are `NSView*`, so a viewer plugin builds an `NSView` (here, a `WKWebView`)
 and hands it back to DC. A **WDX** content plugin like `media-info-wdx` is a `.wdx`
 dylib exporting `ContentGetSupportedField` / `ContentGetValue` instead — it returns
