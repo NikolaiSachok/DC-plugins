@@ -83,12 +83,17 @@ showversion = 1      ; faint plugin-version badge in the bottom-right corner (1/
 ```
 
 Math notes: `\(` and `\[` are also Markdown's escapes for a literal paren or
-bracket, so a backslash-delimited span is only rendered as math when it looks like
-one — `see footnote \[1\]`, `\[TODO\]` and `match \(a group\)` stay as text, and a
-delimiter glued to a word (`file\(s\)`) is always an escape. `$$…$$` carries no such
-ambiguity and is never second-guessed. Delimiters inside code spans, fenced blocks
-and raw HTML `<pre>`/`<code>` are never touched; math inside a raw HTML block (the
-common `<div align="center">$$…$$</div>`) does render. The delimiter logic lives in
+bracket, so a backslash-delimited span is rendered as math only when it looks like
+one. Left as text: anything containing a space but no TeX character (`match \(a
+group\)`), bare numbers (`see footnote \[1\]`), a display span with no TeX character
+at all (`\[TODO\]`), and any delimiter glued to a word (`file\(s\)`). The heuristic
+is not a parser, and it errs toward rendering for inline spans — a single bare token
+such as `\(x\)` is treated as math, so write `\\(group\\)` if you mean literal
+parens. `$$…$$` gets no content test, only the same not-glued-to-a-word rule.
+
+Delimiters inside code spans, fenced blocks and both inline and block raw HTML
+`<pre>`/`<code>`/`<kbd>` are never touched; math inside a raw HTML block (the common
+`<div align="center">$$…$$</div>`) does render. The delimiter logic lives in
 [`assets/mathext.js`](assets/mathext.js).
 
 **Seeing the version:** the bottom-right corner shows a faint `MarkdownView vX.Y.Z`

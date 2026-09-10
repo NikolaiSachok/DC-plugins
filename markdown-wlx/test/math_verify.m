@@ -106,7 +106,20 @@ int main(int argc, char **argv) { @autoreleasepool {
         @"                       &&e.querySelectorAll('.katex').length===0;})(),"
         @"  attrIntact: (function(){var d=c.querySelector('div[title]');"
         @"                return !!d&&d.getAttribute('title')==='a > b'"
-        @"                       &&d.querySelectorAll('.katex').length===1;})()"
+        @"                       &&d.querySelectorAll('.katex').length===1;})(),"
+        @"  inlineRaw:  (function(){var e=Array.prototype.filter.call("
+        @"                c.querySelectorAll('code'),function(x){"
+        @"                  return x.textContent==='$$E=mc^2$$';});"
+        @"                var k=c.querySelector('kbd');"
+        @"                return e.length===1"
+        @"                       &&e[0].querySelectorAll('.katex').length===0"
+        @"                       &&!!k&&k.querySelectorAll('.katex').length===0;})(),"
+        @"  ltHidesPre: (function(){var d=c.querySelector('pre');"
+        @"                var all=Array.prototype.filter.call(c.querySelectorAll('pre'),"
+        @"                  function(x){return x.textContent.indexOf('F=ma')>=0;});"
+        @"                return all.length===1"
+        @"                       &&all[0].textContent.indexOf('$$F=ma$$')>=0"
+        @"                       &&all[0].querySelectorAll('.katex').length===0;})()"
         @"});})()";
 
     PollJS(web, ready, 60, ^(BOOL ok) {
@@ -128,8 +141,9 @@ int main(int argc, char **argv) { @autoreleasepool {
             if (!d) { check(NO, "probe returned JSON"); finish(); return; }
 
             /* 3 in paragraphs, 2 in a list, 1 in a table, 2 in raw HTML,
-             * 3 padded/bare dollar blocks, 1 in a titled div = 12 */
-            check([d[@"katex"] intValue] == 12,          "exactly the twelve formulas render as .katex");
+             * 3 padded/bare dollar blocks, 1 in a titled div,
+             * 1 after a literal < = 13 */
+            check([d[@"katex"] intValue] == 13,          "exactly the thirteen formulas render as .katex");
             /* \[…\] and $$…$$ are display; \(…\) is inline */
             check([d[@"display"] intValue] == 6,         "\\[…\\] and $$…$$ render as display math");
             check([d[@"inList"] boolValue],              "math inside a list item renders");
@@ -149,6 +163,8 @@ int main(int argc, char **argv) { @autoreleasepool {
             check([d[@"labels"] boolValue],              "\\[TODO\\] and \\[x\\] stay literal labels");
             check([d[@"preIntact"] boolValue],           "raw HTML <pre><code> is shown, not rendered");
             check([d[@"attrIntact"] boolValue],          "a > inside an attribute value is not mis-split");
+            check([d[@"inlineRaw"] boolValue],           "inline raw <code>/<kbd> is shown, not rendered");
+            check([d[@"ltHidesPre"] boolValue],          "a literal < cannot hide a <pre> from the skip");
 
             if (gFailures) printf("  probe: %s\n", [[r description] UTF8String]);
             finish();

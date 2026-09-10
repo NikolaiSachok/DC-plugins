@@ -77,8 +77,11 @@
   /* Text inside these raw-HTML elements is meant to be shown, not rendered. */
   var SKIP_OPEN = /^<\s*(pre|code|script|style)\b/i;
   var SKIP_CLOSE = /^<\s*\/\s*(pre|code|script|style)\s*>/i;
-  /* A tag — quoted attribute values may contain ">" — or a run of text. */
-  var CHUNK = /<[^>"']*(?:"[^"]*"|'[^']*'|[^>"'])*>|[^<]+/g;
+  /* One of: an HTML comment; a real tag (quoted attribute values may contain
+   * ">"); a run of text; or a bare "<" that starts no tag. That last alternative
+   * matters — treating "a < b" as an unterminated tag would swallow the rest of
+   * the line, and could hide a <pre> whose contents must not be rendered. */
+  var CHUNK = /<!--[\s\S]*?-->|<\/?[A-Za-z][^>"']*(?:"[^"]*"|'[^']*'|[^>"'])*>|[^<]+|</g;
 
   function substitute(pairs, text) {
     pairs.forEach(function (p) {
@@ -128,6 +131,10 @@
           start: function (s) { var i = s.indexOf(p.open); return i < 0 ? undefined : i; },
           tokenizer: function (s, tokens) {
             if (s.slice(0, p.open.length) !== p.open) return;
+            /* Inside an inline raw-HTML <code>/<pre>/<kbd>, text is meant to be
+             * shown. Block-level raw HTML goes through renderer.html below; this
+             * is the inline path, which marked tracks in its lexer state. */
+            if (this.lexer && this.lexer.state && this.lexer.state.inRawBlock) return;
             if (!prevOk(tokens)) return;
             var e = s.indexOf(p.close, p.open.length);
             if (e < 0) return;
@@ -143,8 +150,10 @@
 
     /* marked passes raw HTML blocks through untouched, so the extension never sees
      * them. Substitute in their text as well, which keeps the common
-     * <div align="center">$$…$$</div> idiom working. Backslashes are literal in
-     * raw HTML, so the escape ambiguity above does not arise there. */
+     * <div align="center">$$…$$</div> idiom working. The same bodyOk() test is
+     * applied here, so a backslash span is judged exactly as it would be in
+     * Markdown — stricter than strictly necessary (raw HTML has no CommonMark
+     * escapes), but one rule is easier to reason about than two. */
     marked.use({
       renderer: {
         html: function (tok) {

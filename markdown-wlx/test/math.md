@@ -38,3 +38,7 @@ Escaped brackets as labels: \[TODO\] and \[x\] stay literal.
 <pre><code>Shown, not rendered: $$E=mc^2$$ and \(y^2\).</code></pre>
 
 <div title="a > b">Attribute with a bracket, and \(w^2\) after.</div>
+
+Inline raw HTML: some <code>$$E=mc^2$$</code> and <kbd>\(y^2\)</kbd> stay shown.
+
+<div>if a < b then <pre>$$F=ma$$</pre> and \(v^2\) after.</div>
