@@ -82,6 +82,23 @@ mathdollar = 0       ; also treat single $…$ as math (off — avoids mangling 
 showversion = 1      ; faint plugin-version badge in the bottom-right corner (1/0)
 ```
 
+Math notes: `\(` and `\[` are also Markdown's escapes for a literal paren or
+bracket, so a backslash-delimited span is rendered as math only when it looks like
+one. Left as text: anything containing a space but no TeX character (`match \(a
+group\)`), bare numbers (`see footnote \[1\]`), a display span with no TeX character
+at all (`\[TODO\]`), and any delimiter glued to a word (`file\(s\)`). The heuristic
+is not a parser, and it errs toward rendering for inline spans — a single bare token
+such as `\(x\)` is treated as math. If that catches a literal, drop the backslashes
+and write `(group)`: parens and brackets need no escaping in Markdown outside link
+syntax. (`\\(group\\)` would leave the backslashes visible on screen.) `$$…$$` gets
+no content test, only the same not-glued-to-a-word rule, so a `$$` in prose can still
+pair with a later one.
+
+Delimiters inside code spans, fenced blocks and both inline and block raw HTML
+`<pre>`/`<code>`/`<kbd>` are never touched; math inside a raw HTML block (the common
+`<div align="center">$$…$$</div>`) does render. The delimiter logic lives in
+[`assets/mathext.js`](assets/mathext.js).
+
 **Seeing the version:** the bottom-right corner shows a faint `MarkdownView vX.Y.Z`
 badge (hover to brighten). Hide it with `showversion = 0`. The version string is
 also embedded in the binary (`strings MarkdownView.wlx | grep MarkdownView`).
@@ -126,7 +143,8 @@ curl -sSL -o hl-github.css       https://cdn.jsdelivr.net/gh/highlightjs/cdn-rel
 curl -sSL -o hl-github-dark.css  https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/styles/github-dark.min.css
 curl -sSL -o mermaid/mermaid.min.js https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js
 curl -sSL -o katex/katex.min.js     https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js
-# KaTeX also needs katex.min.css, contrib/auto-render.min.js, and fonts/*.woff2
+# KaTeX also needs katex.min.css and fonts/*.woff2 (auto-render is deliberately
+# not vendored — math is tokenized in marked instead; see #23)
 ```
 
 ## Uninstall
@@ -149,6 +167,9 @@ Double Commander does. Build them with:
   clipboard really changed (a text clipboard is saved and restored).
 - `test/esc_verify.m` — end-to-end regression for the Escape-key fix: focuses the
   web view, sends Escape, asserts it reaches the host (so the viewer closes).
+- `test/math_verify.m` — KaTeX delimiter regression: asserts all three pairs
+  (`$$…$$`, `\(…\)`, `\[…\]`) produce real `.katex` nodes, including inside lists
+  and tables, and that an escaped `\\(…\\)` and prose dollar amounts are left alone.
 - `test/esc_probe.m` — the diagnostic probe used to find the root cause (whether
   `keyDown:` reaches a `WKWebView` subclass and forwarding reaches the parent).
 - `test/scroll_verify.m` — scroll-restore regression: scroll a file, navigate away

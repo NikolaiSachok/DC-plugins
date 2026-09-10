@@ -18,6 +18,13 @@ clang -dynamiclib $ARCHS \
   -framework Cocoa -framework WebKit \
   -o "$OUT" MarkdownView.m
 
+echo "==> Staging assets"
+# The harnesses load the plugin out of build/, so assets/ must be mirrored
+# there — otherwise a test can pass against a stale copy of a file this
+# build changed or deleted.
+rm -rf build/assets
+cp -R assets build/assets
+
 echo "==> Ad-hoc signing"
 codesign --force --sign - "$OUT"
 

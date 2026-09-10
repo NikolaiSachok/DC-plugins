@@ -19,6 +19,25 @@ independently and tagged below.
   and swallowed the keystroke. It now exports the entry point; Select All covers
   the rendered document only, so the version badge no longer lands in the
   clipboard. Closes #25.
+- **markdown-wlx:** `\(…\)` and `\[…\]` math never rendered — only `$$…$$` did,
+  despite the README and `MarkdownView.ini.sample` advertising all three. `marked`
+  runs before KaTeX and treats `\(`, `\[` as backslash escapes for punctuation,
+  emitting a bare `(` or `[`, so the delimiter KaTeX's auto-render was looking for
+  had already been consumed. Math is now tokenized by a `marked` inline extension,
+  which is tried ahead of the built-in escape rule, and rendered with
+  `katex.render` after sanitizing — so the backslash pairs also work inside lists
+  and tables, which they never did before, and inside raw HTML blocks (the common
+  `<div align="center">$$…$$</div>` idiom). `auto-render.min.js` is no longer
+  vendored or loaded. Because `\(` and `\[` are also Markdown's escapes for a
+  literal paren or bracket, a span is only treated as math when it looks like
+  math, so prose such as `see footnote \[1\]`, `\[TODO\]` and `file\(s\)` is left
+  alone; `$$…$$` gets no content test. The heuristic errs toward rendering for
+  inline spans, so `\(x\)` is math — a literal there is written unescaped, as
+  `(x)`. Delimiters
+  inside code spans, fenced blocks and both inline and block raw HTML
+  `<pre>`/`<code>`/`<kbd>` are never touched.
+  The delimiter logic lives in `assets/mathext.js`. Pre-existing since math landed
+  in 0.2.0. Closes #23.
 
 ## book-wlx 0.1.1 — 2026-09-10
 

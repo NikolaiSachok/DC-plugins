@@ -20,6 +20,11 @@ fontsize = 16
 mermaid = 1
 
 ; Render math with KaTeX (1/0). Block $$…$$ and \(…\) / \[…\] work by default.
+; \( and \[ are also Markdown's way to escape a literal paren or bracket, so a
+; span is only treated as math when it looks like math — "see footnote \[1\]",
+; "\[TODO\]" and "match \(a group\)" stay as text. A single bare token such as
+; \(x\) IS math — if that catches a literal, drop the backslashes and write
+; (group), which needs no escaping in Markdown anyway.
 math = 1
 
 ; Also treat single $…$ as inline math (1/0). Off by default because it mangles

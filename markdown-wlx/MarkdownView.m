@@ -366,15 +366,22 @@ static NSString *AssetMime(NSString *path) {
     if (wantMath) {
         [head appendFormat:@"<link rel=\"stylesheet\" href=\"%@\">", AssetURL(@"katex/katex.min.css")];
         [head appendFormat:@"<script src=\"%@\"></script>", AssetURL(@"katex/katex.min.js")];
-        [head appendFormat:@"<script src=\"%@\"></script>", AssetURL(@"katex/auto-render.min.js")];
+        [head appendFormat:@"<script src=\"%@\"></script>", AssetURL(@"mathext.js")];
+        /* No auto-render.min.js: it walks the DOM looking for delimiters, by which
+         * point marked has already eaten the backslash in \( and \[. Math is
+         * tokenized in marked instead — see the extension in the bootstrap. */
     }
 
     NSString *bootstrap = [NSString stringWithFormat:@""
-        "var __theme=\"%@\";var __scrollY=%ld;var __mathDollar=%d;"
+        "var __theme=\"%@\";var __scrollY=%ld;var __mathDollar=%d;var __wantMath=%d;"
         "window.addEventListener('load',function(){"
         "var b64=document.getElementById('md-data').textContent.trim();"
         "var md=new TextDecoder('utf-8').decode(Uint8Array.from(atob(b64),function(c){return c.charCodeAt(0);}));"
         "try{marked.setOptions({gfm:true,breaks:false});}catch(e){}"
+        /* Math delimiters are handled in assets/mathext.js — see #23 and the note
+         * at the top of that file. It has to run before marked.parse(). */
+        "if(__wantMath&&window.__dcMathSetup)try{"
+          "__dcMathSetup(marked,{dollar:!!__mathDollar});}catch(e){}"
         "var out;try{out=marked.parse(md);}catch(e){out='<pre>'+String(e)+'</pre>';}"
         /* Markdown is untrusted: sanitize before insertion so raw HTML/JS in the
          * document (e.g. <img onerror>, <script>) cannot execute. */
@@ -388,15 +395,12 @@ static NSString *AssetMime(NSString *path) {
           "mermaid.initialize({startOnLoad:false,theme:dark?'dark':'default',securityLevel:'strict'});"
           "mermaid.run();}catch(e){}}"
         "try{content.querySelectorAll('pre code:not(.language-mermaid)').forEach(function(el){hljs.highlightElement(el);});}catch(e){}"
-        "if(window.renderMathInElement){try{"
-          "var __d=[{left:'$$',right:'$$',display:true},"
-          "{left:'\\\\(',right:'\\\\)',display:false},{left:'\\\\[',right:'\\\\]',display:true}];"
-          "if(__mathDollar)__d.push({left:'$',right:'$',display:false});"
-          "renderMathInElement(content,{delimiters:__d,throwOnError:false});}catch(e){}}"
+        /* Render the spans the tokenizers left behind, after sanitizing. */
+        "if(__wantMath&&window.__dcMathRender)try{__dcMathRender(content);}catch(e){}"
         "try{if(__scrollY>0)window.scrollTo(0,__scrollY);}catch(e){}"
         "var post=function(){try{window.webkit.messageHandlers.dcmd.postMessage(window.scrollY);}catch(e){}};"
         "var t=null;window.addEventListener('scroll',function(){if(t)return;t=setTimeout(function(){t=null;post();},120);},{passive:true});"
-        "});", theme, savedY, allowDollar ? 1 : 0];
+        "});", theme, savedY, allowDollar ? 1 : 0, wantMath ? 1 : 0];
 
     NSMutableString *html = [NSMutableString string];
     [html appendString:@"<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
