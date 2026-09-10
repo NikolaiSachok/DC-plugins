@@ -126,7 +126,8 @@ curl -sSL -o hl-github.css       https://cdn.jsdelivr.net/gh/highlightjs/cdn-rel
 curl -sSL -o hl-github-dark.css  https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/styles/github-dark.min.css
 curl -sSL -o mermaid/mermaid.min.js https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js
 curl -sSL -o katex/katex.min.js     https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js
-# KaTeX also needs katex.min.css, contrib/auto-render.min.js, and fonts/*.woff2
+# KaTeX also needs katex.min.css and fonts/*.woff2 (auto-render is deliberately
+# not vendored — math is tokenized in marked instead; see #23)
 ```
 
 ## Uninstall
@@ -149,6 +150,9 @@ Double Commander does. Build them with:
   clipboard really changed (a text clipboard is saved and restored).
 - `test/esc_verify.m` — end-to-end regression for the Escape-key fix: focuses the
   web view, sends Escape, asserts it reaches the host (so the viewer closes).
+- `test/math_verify.m` — KaTeX delimiter regression: asserts all three pairs
+  (`$$…$$`, `\(…\)`, `\[…\]`) produce real `.katex` nodes, including inside lists
+  and tables, and that an escaped `\\(…\\)` and prose dollar amounts are left alone.
 - `test/esc_probe.m` — the diagnostic probe used to find the root cause (whether
   `keyDown:` reaches a `WKWebView` subclass and forwarding reaches the parent).
 - `test/scroll_verify.m` — scroll-restore regression: scroll a file, navigate away

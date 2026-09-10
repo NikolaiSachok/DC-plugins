@@ -19,6 +19,15 @@ independently and tagged below.
   and swallowed the keystroke. It now exports the entry point; Select All covers
   the rendered document only, so the version badge no longer lands in the
   clipboard. Closes #25.
+- **markdown-wlx:** `\(…\)` and `\[…\]` math never rendered — only `$$…$$` did,
+  despite the README and `MarkdownView.ini.sample` advertising all three. `marked`
+  runs before KaTeX and treats `\(`, `\[` as backslash escapes for punctuation,
+  emitting a bare `(` or `[`, so the delimiter KaTeX's auto-render was looking for
+  had already been consumed. Math is now tokenized by a `marked` inline extension,
+  which is tried ahead of the built-in escape rule, and rendered with
+  `katex.render` after sanitizing — so it also works inside lists and tables, which
+  it never did before. `auto-render.min.js` is no longer vendored or loaded.
+  Pre-existing since math landed in 0.2.0. Closes #23.
 
 ## book-wlx 0.1.1 — 2026-09-10
 

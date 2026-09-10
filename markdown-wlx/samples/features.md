@@ -5,8 +5,10 @@ structure — used for manual and snapshot testing.
 
 ## Math (KaTeX)
 
-Inline uses `\( … \)`: the mass–energy relation is \\(E = mc^2\\), and
-\\(\sqrt{a^2 + b^2}\\) is the hypotenuse. Block uses `$$ … $$`:
+Inline uses `\( … \)`: the mass–energy relation is \(E = mc^2\), and
+\(\sqrt{a^2 + b^2}\) is the hypotenuse. Display uses `\[ … \]` or `$$ … $$`:
+
+\[ a^2 + b^2 = c^2 \]
 
 $$
 \int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}

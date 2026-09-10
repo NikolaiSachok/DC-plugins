@@ -366,15 +366,43 @@ static NSString *AssetMime(NSString *path) {
     if (wantMath) {
         [head appendFormat:@"<link rel=\"stylesheet\" href=\"%@\">", AssetURL(@"katex/katex.min.css")];
         [head appendFormat:@"<script src=\"%@\"></script>", AssetURL(@"katex/katex.min.js")];
-        [head appendFormat:@"<script src=\"%@\"></script>", AssetURL(@"katex/auto-render.min.js")];
+        /* No auto-render.min.js: it walks the DOM looking for delimiters, by which
+         * point marked has already eaten the backslash in \( and \[. Math is
+         * tokenized in marked instead — see the extension in the bootstrap. */
     }
 
     NSString *bootstrap = [NSString stringWithFormat:@""
-        "var __theme=\"%@\";var __scrollY=%ld;var __mathDollar=%d;"
+        "var __theme=\"%@\";var __scrollY=%ld;var __mathDollar=%d;var __wantMath=%d;"
         "window.addEventListener('load',function(){"
         "var b64=document.getElementById('md-data').textContent.trim();"
         "var md=new TextDecoder('utf-8').decode(Uint8Array.from(atob(b64),function(c){return c.charCodeAt(0);}));"
         "try{marked.setOptions({gfm:true,breaks:false});}catch(e){}"
+        /* Math has to be tokenized by marked itself. Left to the default rules,
+         * marked treats \( \) \[ \] as backslash escapes for punctuation and emits
+         * a bare ( or [, so the delimiter is gone before KaTeX ever sees the DOM —
+         * which is why $$ used to be the only pair that worked (#23). An inline
+         * extension is tried ahead of the built-in escape tokenizer, so the span is
+         * claimed intact; it also makes math work inside lists and tables.
+         * The TeX is carried as textContent (never markup) and rendered after
+         * sanitizing. */
+        "if(__wantMath)try{"
+          "var __md=[{n:'dcMathDD',o:'$$',c:'$$',d:true},"
+                    "{n:'dcMathDB',o:'\\\\[',c:'\\\\]',d:true},"
+                    "{n:'dcMathIP',o:'\\\\(',c:'\\\\)',d:false}];"
+          /* single-$ last, so $$ always wins the longer match */
+          "if(__mathDollar)__md.push({n:'dcMathID',o:'$',c:'$',d:false});"
+          "marked.use({extensions:__md.map(function(x){return{"
+            "name:x.n,level:'inline',"
+            "start:function(s){var i=s.indexOf(x.o);return i<0?undefined:i;},"
+            "tokenizer:function(s){"
+              "if(s.slice(0,x.o.length)!==x.o)return;"
+              "var e=s.indexOf(x.c,x.o.length);if(e<0)return;"
+              "var tex=s.slice(x.o.length,e);if(!tex.trim())return;"
+              "return{type:x.n,raw:s.slice(0,e+x.c.length),text:tex,display:x.d};},"
+            "renderer:function(t){var sp=document.createElement('span');"
+              "sp.className='dc-math';sp.setAttribute('data-display',t.display?'1':'0');"
+              "sp.textContent=t.text;return sp.outerHTML;}"
+          "};})});}catch(e){}"
         "var out;try{out=marked.parse(md);}catch(e){out='<pre>'+String(e)+'</pre>';}"
         /* Markdown is untrusted: sanitize before insertion so raw HTML/JS in the
          * document (e.g. <img onerror>, <script>) cannot execute. */
@@ -388,15 +416,16 @@ static NSString *AssetMime(NSString *path) {
           "mermaid.initialize({startOnLoad:false,theme:dark?'dark':'default',securityLevel:'strict'});"
           "mermaid.run();}catch(e){}}"
         "try{content.querySelectorAll('pre code:not(.language-mermaid)').forEach(function(el){hljs.highlightElement(el);});}catch(e){}"
-        "if(window.renderMathInElement){try{"
-          "var __d=[{left:'$$',right:'$$',display:true},"
-          "{left:'\\\\(',right:'\\\\)',display:false},{left:'\\\\[',right:'\\\\]',display:true}];"
-          "if(__mathDollar)__d.push({left:'$',right:'$',display:false});"
-          "renderMathInElement(content,{delimiters:__d,throwOnError:false});}catch(e){}}"
+        /* Render the spans the extension left behind. textContent, so nothing from
+         * the document is ever parsed as markup on the way in. */
+        "if(window.katex){content.querySelectorAll('span.dc-math').forEach(function(el){"
+          "try{katex.render(el.textContent,el,"
+            "{displayMode:el.getAttribute('data-display')==='1',throwOnError:false});}"
+          "catch(e){}});}"
         "try{if(__scrollY>0)window.scrollTo(0,__scrollY);}catch(e){}"
         "var post=function(){try{window.webkit.messageHandlers.dcmd.postMessage(window.scrollY);}catch(e){}};"
         "var t=null;window.addEventListener('scroll',function(){if(t)return;t=setTimeout(function(){t=null;post();},120);},{passive:true});"
-        "});", theme, savedY, allowDollar ? 1 : 0];
+        "});", theme, savedY, allowDollar ? 1 : 0, wantMath ? 1 : 0];
 
     NSMutableString *html = [NSMutableString string];
     [html appendString:@"<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
