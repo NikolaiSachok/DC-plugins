@@ -131,7 +131,12 @@ int main(int argc, char **argv) { @autoreleasepool {
         @"                return all.length===1"
         @"                       &&all[0].querySelectorAll('.katex').length===0"
         @"                       &&all[0].textContent.indexOf('$$k^2$$')>=0;})(),"
-        @"  unicodeGlue: t.indexOf('fich\u00e9(s) and \u0444\u0430\u0439\u043b(\u044b) stay text')>=0"
+        @"  unicodeGlue: t.indexOf('fich\u00e9(s) and \u0444\u0430\u0439\u043b(\u044b) stay text')>=0,"
+        @"  comment:    (function(){var d=Array.prototype.filter.call("
+        @"                c.querySelectorAll('div'),function(x){"
+        @"                  return x.textContent.indexOf('Comment holds no math')>=0;});"
+        @"                return d.length===1&&d[0].querySelectorAll('.katex').length===1"
+        @"                       &&d[0].innerHTML.indexOf('c^2')<0;})()"
         @"});})()";
 
     PollJS(web, ready, 60, ^(BOOL ok) {
@@ -154,8 +159,9 @@ int main(int argc, char **argv) { @autoreleasepool {
 
             /* 3 in paragraphs, 2 in a list, 1 in a table, 2 in raw HTML,
              * 3 padded/bare dollar blocks, 1 in a titled div,
-             * 1 after a literal <, 2 with < and > in a div = 15 */
-            check([d[@"katex"] intValue] == 15,          "exactly the fifteen formulas render as .katex");
+             * 1 after a literal <, 2 with < and > in a div,
+             * 1 after an HTML comment = 16 */
+            check([d[@"katex"] intValue] == 16,          "exactly the sixteen formulas render as .katex");
             /* \[…\] and $$…$$ are display; \(…\) is inline */
             check([d[@"display"] intValue] == 8,         "\\[…\\] and $$…$$ render as display math");
             check([d[@"inList"] boolValue],              "math inside a list item renders");
@@ -180,6 +186,7 @@ int main(int argc, char **argv) { @autoreleasepool {
             check([d[@"ltInMath"] boolValue],            "$$x < y$$ renders inside a raw HTML block");
             check([d[@"kbdBlock"] boolValue],            "a block-level <kbd> is shown, not rendered");
             check([d[@"unicodeGlue"] boolValue],         "non-ASCII words glued to \\(s\\) stay text");
+            check([d[@"comment"] boolValue],             "math inside an HTML comment is not rendered");
 
             if (gFailures) printf("  probe: %s\n", [[r description] UTF8String]);
             finish();

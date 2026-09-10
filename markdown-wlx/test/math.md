@@ -50,3 +50,5 @@ $$k^2$$
 </kbd>
 
 Accented and Cyrillic glue: fiché\(s\) and файл\(ы\) stay text.
+
+<div>Comment holds no math: <!-- $$c^2$$ and \(d^2\) --> but \(e^2\) after does.</div>
