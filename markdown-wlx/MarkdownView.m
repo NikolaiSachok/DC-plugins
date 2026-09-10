@@ -384,25 +384,62 @@ static NSString *AssetMime(NSString *path) {
          * extension is tried ahead of the built-in escape tokenizer, so the span is
          * claimed intact; it also makes math work inside lists and tables.
          * The TeX is carried as textContent (never markup) and rendered after
-         * sanitizing. */
+         * sanitizing.
+         *
+         * marked passes raw HTML blocks through untouched, so the extension never
+         * sees them; the same substitution is applied to their text in the block
+         * renderer, which keeps the common `<div align="center">$$…$$</div>` README
+         * idiom working. (Backslashes in raw HTML are literal, so the escape
+         * ambiguity below does not arise there.) */
         "if(__wantMath)try{"
+          /* A candidate is math only if it looks like math. \( and \[ are also the
+           * CommonMark way to escape a literal paren or bracket, so prose such as
+           * "see footnote \[1\]" or "match \(a group\)" must be left alone; and a
+           * backtick means the scan has run into an inline code span, which it must
+           * never swallow (`echo $$` in shell docs). */
+          "var __okMath=function(x){"
+            "if(!x||!x.trim())return false;"
+            "if(x.indexOf('`')>=0)return false;"
+            "if(/^[\\s\\d.,]+$/.test(x))return false;"
+            "if(/\\s/.test(x)&&!/[\\\\^_{}=+*\\/<>|&~!-]/.test(x))return false;"
+            "return true;};"
+          "var __mkMath=function(tex,disp){var sp=document.createElement('span');"
+            "sp.className='dc-math';sp.setAttribute('data-display',disp?'1':'0');"
+            "sp.textContent=tex;return sp.outerHTML;};"
           "var __md=[{n:'dcMathDD',o:'$$',c:'$$',d:true},"
                     "{n:'dcMathDB',o:'\\\\[',c:'\\\\]',d:true},"
                     "{n:'dcMathIP',o:'\\\\(',c:'\\\\)',d:false}];"
-          /* single-$ last, so $$ always wins the longer match */
+          /* Single-$ must be tried AFTER $$ or every $$ block parses as an empty
+           * $…$ pair. marked.use() *unshifts* each tokenizer, so the registered
+           * order is reversed — hence .reverse() below, not a push at the end. */
           "if(__mathDollar)__md.push({n:'dcMathID',o:'$',c:'$',d:false});"
-          "marked.use({extensions:__md.map(function(x){return{"
+          "marked.use({extensions:__md.slice().reverse().map(function(x){return{"
             "name:x.n,level:'inline',"
             "start:function(s){var i=s.indexOf(x.o);return i<0?undefined:i;},"
             "tokenizer:function(s){"
               "if(s.slice(0,x.o.length)!==x.o)return;"
               "var e=s.indexOf(x.c,x.o.length);if(e<0)return;"
-              "var tex=s.slice(x.o.length,e);if(!tex.trim())return;"
+              "var tex=s.slice(x.o.length,e);if(!__okMath(tex))return;"
               "return{type:x.n,raw:s.slice(0,e+x.c.length),text:tex,display:x.d};},"
-            "renderer:function(t){var sp=document.createElement('span');"
-              "sp.className='dc-math';sp.setAttribute('data-display',t.display?'1':'0');"
-              "sp.textContent=t.text;return sp.outerHTML;}"
-          "};})});}catch(e){}"
+            "renderer:function(t){return __mkMath(t.text,t.display);}"
+          "};})});"
+          /* Raw HTML blocks: substitute in the text between tags, never inside one. */
+          "var __mathInHTML=function(s){return String(s).replace(/<[^>]*>|[^<]+/g,"
+            "function(ch){if(ch.charAt(0)==='<')return ch;"
+              "__md.forEach(function(x){var out='',rest=ch;"
+                "for(;;){var a=rest.indexOf(x.o);if(a<0)break;"
+                  "var b=rest.indexOf(x.c,a+x.o.length);if(b<0)break;"
+                  "var tex=rest.slice(a+x.o.length,b);"
+                  "if(__okMath(tex)){out+=rest.slice(0,a)+__mkMath(tex,x.d);}"
+                  "else{out+=rest.slice(0,b+x.c.length);}"
+                  "rest=rest.slice(b+x.c.length);}"
+                "ch=out+rest;});"
+              "return ch;});};"
+          "marked.use({renderer:{html:function(tok){"
+            /* v12 hands the renderer a string; newer marked hands a token. */
+            "var s=(typeof tok==='string')?tok:((tok&&(tok.text||tok.raw))||'');"
+            "return __mathInHTML(s);}}});"
+        "}catch(e){}"
         "var out;try{out=marked.parse(md);}catch(e){out='<pre>'+String(e)+'</pre>';}"
         /* Markdown is untrusted: sanitize before insertion so raw HTML/JS in the
          * document (e.g. <img onerror>, <script>) cannot execute. */

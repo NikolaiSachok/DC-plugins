@@ -89,7 +89,14 @@ int main(int argc, char **argv) { @autoreleasepool {
         @"  literal:    t.indexOf('\\\\(not math\\\\)')>=0,"
         @"  codespan:   !!Array.prototype.find.call(c.querySelectorAll('code'),"
         @"                function(e){return e.textContent.indexOf('code not math')>=0;}),"
-        @"  dollars:    t.indexOf('$5 to $10')>=0"
+        @"  dollars:    t.indexOf('$5 to $10')>=0,"
+        @"  shellPid:   t.indexOf('use $$ for the pid')>=0,"
+        @"  codeIntact: !!Array.prototype.find.call(c.querySelectorAll('code'),"
+        @"                function(e){return e.textContent==='echo $$';}),"
+        @"  footnote:   t.indexOf('footnote [1] and reference [2]')>=0,"
+        @"  regexProse: t.indexOf('match (a group) and later a literal (second group)')>=0,"
+        @"  rawHtml:    (function(){var d=c.querySelector('div[align=\"center\"]');"
+        @"                return !!d&&d.querySelectorAll('.katex').length===2;})()"
         @"});})()";
 
     PollJS(web, ready, 60, ^(BOOL ok) {
@@ -111,9 +118,9 @@ int main(int argc, char **argv) { @autoreleasepool {
             if (!d) { check(NO, "probe returned JSON"); finish(); return; }
 
             /* 3 paragraph formulas + 2 in a list + 1 in a table = 6 */
-            check([d[@"katex"] intValue] == 6,           "exactly the six formulas render as .katex");
+            check([d[@"katex"] intValue] == 8,           "exactly the eight formulas render as .katex");
             /* \[…\] and $$…$$ are display; \(…\) is inline */
-            check([d[@"display"] intValue] == 2,         "\\[…\\] and $$…$$ render as display math");
+            check([d[@"display"] intValue] == 3,         "\\[…\\] and $$…$$ render as display math");
             check([d[@"inList"] boolValue],              "math inside a list item renders");
             check([d[@"inTable"] boolValue],             "math inside a table cell renders");
             check(![d[@"bareParen"] boolValue],          "\\(…\\) leaves no literal text behind");
@@ -121,6 +128,11 @@ int main(int argc, char **argv) { @autoreleasepool {
             check([d[@"literal"] boolValue],             "an escaped \\\\(…\\\\) stays literal text");
             check([d[@"codespan"] boolValue],            "math delimiters inside a code span stay literal");
             check([d[@"dollars"] boolValue],             "prose dollar amounts are not eaten as math");
+            check([d[@"shellPid"] boolValue],            "a lone $$ in prose is not a delimiter");
+            check([d[@"codeIntact"] boolValue],          "a $$ scan never swallows an inline code span");
+            check([d[@"footnote"] boolValue],            "\\[1\\] stays an escaped bracket, not display math");
+            check([d[@"regexProse"] boolValue],          "\\(a group\\) stays escaped parens, not math");
+            check([d[@"rawHtml"] boolValue],             "math inside a raw HTML block renders");
 
             if (gFailures) printf("  probe: %s\n", [[r description] UTF8String]);
             finish();

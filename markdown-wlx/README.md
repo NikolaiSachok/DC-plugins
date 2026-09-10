@@ -82,6 +82,12 @@ mathdollar = 0       ; also treat single $…$ as math (off — avoids mangling 
 showversion = 1      ; faint plugin-version badge in the bottom-right corner (1/0)
 ```
 
+Math notes: `\(` and `\[` are also Markdown's escapes for a literal paren or
+bracket, so a span is only rendered as math when it looks like math — `see footnote
+\[1\]` and `match \(a group\)` are left as text. Delimiters inside code spans and
+fenced blocks are never touched, and math inside a raw HTML block (the common
+`<div align="center">$$…$$</div>`) renders too.
+
 **Seeing the version:** the bottom-right corner shows a faint `MarkdownView vX.Y.Z`
 badge (hover to brighten). Hide it with `showversion = 0`. The version string is
 also embedded in the binary (`strings MarkdownView.wlx | grep MarkdownView`).

@@ -26,8 +26,13 @@ independently and tagged below.
   had already been consumed. Math is now tokenized by a `marked` inline extension,
   which is tried ahead of the built-in escape rule, and rendered with
   `katex.render` after sanitizing — so it also works inside lists and tables, which
-  it never did before. `auto-render.min.js` is no longer vendored or loaded.
-  Pre-existing since math landed in 0.2.0. Closes #23.
+  it never did before, and inside raw HTML blocks (the common
+  `<div align="center">$$…$$</div>` idiom). `auto-render.min.js` is no longer
+  vendored or loaded. Because `\(` and `\[` are also Markdown's escapes for a
+  literal paren or bracket, a span is only treated as math when it looks like
+  math, so prose such as `see footnote \[1\]` is left alone; delimiters inside
+  code spans and fenced blocks are never touched. Pre-existing since math landed
+  in 0.2.0. Closes #23.
 
 ## book-wlx 0.1.1 — 2026-09-10
 
