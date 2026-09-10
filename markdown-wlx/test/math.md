@@ -42,3 +42,11 @@ Escaped brackets as labels: \[TODO\] and \[x\] stay literal.
 Inline raw HTML: some <code>$$E=mc^2$$</code> and <kbd>\(y^2\)</kbd> stay shown.
 
 <div>if a < b then <pre>$$F=ma$$</pre> and \(v^2\) after.</div>
+
+<div align="center">$$x < y$$ and $$p > q$$ both render.</div>
+
+<kbd>
+$$k^2$$
+</kbd>
+
+Accented and Cyrillic glue: fiché\(s\) and файл\(ы\) stay text.

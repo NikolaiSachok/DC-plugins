@@ -54,7 +54,9 @@
   /* Never claim a delimiter glued to a word: "file\(s\)" is an escaped paren,
    * "let \(x\) be" is math. */
   function afterWordChar(ch) {
-    return !!ch && /[A-Za-z0-9]/.test(ch);
+    /* Unicode-aware: the guard exists for prose, and "fiché\(s\)" or
+     * "файл\(ы\)" are the same idiom as "file\(s\)". */
+    return !!ch && /[\p{L}\p{N}]/u.test(ch);
   }
 
   function prevOk(tokens) {
@@ -75,13 +77,14 @@
   }
 
   /* Text inside these raw-HTML elements is meant to be shown, not rendered. */
-  var SKIP_OPEN = /^<\s*(pre|code|script|style)\b/i;
-  var SKIP_CLOSE = /^<\s*\/\s*(pre|code|script|style)\s*>/i;
+  var SKIP_OPEN = /^<\s*(pre|code|kbd|script|style|textarea)\b/i;
+  var SKIP_CLOSE = /^<\s*\/\s*(pre|code|kbd|script|style|textarea)\s*>/i;
   /* One of: an HTML comment; a real tag (quoted attribute values may contain
-   * ">"); a run of text; or a bare "<" that starts no tag. That last alternative
-   * matters — treating "a < b" as an unterminated tag would swallow the rest of
-   * the line, and could hide a <pre> whose contents must not be rendered. */
-  var CHUNK = /<!--[\s\S]*?-->|<\/?[A-Za-z][^>"']*(?:"[^"]*"|'[^']*'|[^>"'])*>|[^<]+|</g;
+   * ">"); or a run of text. The text alternative absorbs a "<" that starts no tag,
+   * so "a < b" neither swallows the rest of the line (which could hide a <pre>
+   * whose contents must not be rendered) nor splits a formula such as
+   * "$$x < y$$" into pieces the substitution can no longer see. */
+  var CHUNK = /<!--[\s\S]*?-->|<\/?[A-Za-z][^>"']*(?:"[^"]*"|'[^']*'|[^>"'])*>|(?:[^<]|<(?![!\/]|[A-Za-z]))+/g;
 
   function substitute(pairs, text) {
     pairs.forEach(function (p) {

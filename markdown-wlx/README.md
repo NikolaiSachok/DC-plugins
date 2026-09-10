@@ -88,8 +88,11 @@ one. Left as text: anything containing a space but no TeX character (`match \(a
 group\)`), bare numbers (`see footnote \[1\]`), a display span with no TeX character
 at all (`\[TODO\]`), and any delimiter glued to a word (`file\(s\)`). The heuristic
 is not a parser, and it errs toward rendering for inline spans — a single bare token
-such as `\(x\)` is treated as math, so write `\\(group\\)` if you mean literal
-parens. `$$…$$` gets no content test, only the same not-glued-to-a-word rule.
+such as `\(x\)` is treated as math. If that catches a literal, drop the backslashes
+and write `(group)`: parens and brackets need no escaping in Markdown outside link
+syntax. (`\\(group\\)` would leave the backslashes visible on screen.) `$$…$$` gets
+no content test, only the same not-glued-to-a-word rule, so a `$$` in prose can still
+pair with a later one.
 
 Delimiters inside code spans, fenced blocks and both inline and block raw HTML
 `<pre>`/`<code>`/`<kbd>` are never touched; math inside a raw HTML block (the common

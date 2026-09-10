@@ -114,12 +114,24 @@ int main(int argc, char **argv) { @autoreleasepool {
         @"                return e.length===1"
         @"                       &&e[0].querySelectorAll('.katex').length===0"
         @"                       &&!!k&&k.querySelectorAll('.katex').length===0;})(),"
-        @"  ltHidesPre: (function(){var d=c.querySelector('pre');"
+        @"  ltHidesPre: (function(){"
         @"                var all=Array.prototype.filter.call(c.querySelectorAll('pre'),"
         @"                  function(x){return x.textContent.indexOf('F=ma')>=0;});"
         @"                return all.length===1"
         @"                       &&all[0].textContent.indexOf('$$F=ma$$')>=0"
-        @"                       &&all[0].querySelectorAll('.katex').length===0;})()"
+        @"                       &&all[0].querySelectorAll('.katex').length===0;})(),"
+        @"  ltInMath:   (function(){var d=Array.prototype.filter.call("
+        @"                c.querySelectorAll('div[align=\"center\"]'),function(x){"
+        @"                  return x.textContent.indexOf('both render')>=0;});"
+        @"                return d.length===1&&d[0].querySelectorAll('.katex').length===2"
+        @"                       &&d[0].textContent.indexOf('$$')<0;})(),"
+        @"  kbdBlock:   (function(){var k=c.querySelector('kbd');"
+        @"                var all=Array.prototype.filter.call(c.querySelectorAll('kbd'),"
+        @"                  function(x){return x.textContent.indexOf('k^2')>=0;});"
+        @"                return all.length===1"
+        @"                       &&all[0].querySelectorAll('.katex').length===0"
+        @"                       &&all[0].textContent.indexOf('$$k^2$$')>=0;})(),"
+        @"  unicodeGlue: t.indexOf('fich\u00e9(s) and \u0444\u0430\u0439\u043b(\u044b) stay text')>=0"
         @"});})()";
 
     PollJS(web, ready, 60, ^(BOOL ok) {
@@ -142,10 +154,10 @@ int main(int argc, char **argv) { @autoreleasepool {
 
             /* 3 in paragraphs, 2 in a list, 1 in a table, 2 in raw HTML,
              * 3 padded/bare dollar blocks, 1 in a titled div,
-             * 1 after a literal < = 13 */
-            check([d[@"katex"] intValue] == 13,          "exactly the thirteen formulas render as .katex");
+             * 1 after a literal <, 2 with < and > in a div = 15 */
+            check([d[@"katex"] intValue] == 15,          "exactly the fifteen formulas render as .katex");
             /* \[…\] and $$…$$ are display; \(…\) is inline */
-            check([d[@"display"] intValue] == 6,         "\\[…\\] and $$…$$ render as display math");
+            check([d[@"display"] intValue] == 8,         "\\[…\\] and $$…$$ render as display math");
             check([d[@"inList"] boolValue],              "math inside a list item renders");
             check([d[@"inTable"] boolValue],             "math inside a table cell renders");
             check(![d[@"bareParen"] boolValue],          "\\(…\\) leaves no literal text behind");
@@ -153,7 +165,7 @@ int main(int argc, char **argv) { @autoreleasepool {
             check([d[@"literal"] boolValue],             "an escaped \\\\(…\\\\) stays literal text");
             check([d[@"codespan"] boolValue],            "math delimiters inside a code span stay literal");
             check([d[@"dollars"] boolValue],             "prose dollar amounts are not eaten as math");
-            check([d[@"shellPid"] boolValue],            "a lone $$ in prose is not a delimiter");
+            check([d[@"shellPid"] boolValue],            "a $$ span that runs into a code span is rejected");
             check([d[@"codeIntact"] boolValue],          "a $$ scan never swallows an inline code span");
             check([d[@"footnote"] boolValue],            "\\[1\\] stays an escaped bracket, not display math");
             check([d[@"regexProse"] boolValue],          "\\(a group\\) stays escaped parens, not math");
@@ -165,6 +177,9 @@ int main(int argc, char **argv) { @autoreleasepool {
             check([d[@"attrIntact"] boolValue],          "a > inside an attribute value is not mis-split");
             check([d[@"inlineRaw"] boolValue],           "inline raw <code>/<kbd> is shown, not rendered");
             check([d[@"ltHidesPre"] boolValue],          "a literal < cannot hide a <pre> from the skip");
+            check([d[@"ltInMath"] boolValue],            "$$x < y$$ renders inside a raw HTML block");
+            check([d[@"kbdBlock"] boolValue],            "a block-level <kbd> is shown, not rendered");
+            check([d[@"unicodeGlue"] boolValue],         "non-ASCII words glued to \\(s\\) stay text");
 
             if (gFailures) printf("  probe: %s\n", [[r description] UTF8String]);
             finish();
