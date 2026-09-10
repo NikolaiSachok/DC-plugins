@@ -96,7 +96,17 @@ int main(int argc, char **argv) { @autoreleasepool {
         @"  footnote:   t.indexOf('footnote [1] and reference [2]')>=0,"
         @"  regexProse: t.indexOf('match (a group) and later a literal (second group)')>=0,"
         @"  rawHtml:    (function(){var d=c.querySelector('div[align=\"center\"]');"
-        @"                return !!d&&d.querySelectorAll('.katex').length===2;})()"
+        @"                return !!d&&d.querySelectorAll('.katex').length===2;})(),"
+        @"  padded:     t.indexOf('Padded display math: $$')<0"
+        @"              &&t.indexOf('bare numbers $$')<0,"
+        @"  glued:      t.indexOf('the file(s) to open')>=0,"
+        @"  labels:     t.indexOf('[TODO] and [x] stay literal')>=0,"
+        @"  preIntact:  (function(){var e=c.querySelector('pre code');"
+        @"                return !!e&&e.textContent.indexOf('$$E=mc^2$$')>=0"
+        @"                       &&e.querySelectorAll('.katex').length===0;})(),"
+        @"  attrIntact: (function(){var d=c.querySelector('div[title]');"
+        @"                return !!d&&d.getAttribute('title')==='a > b'"
+        @"                       &&d.querySelectorAll('.katex').length===1;})()"
         @"});})()";
 
     PollJS(web, ready, 60, ^(BOOL ok) {
@@ -117,10 +127,11 @@ int main(int argc, char **argv) { @autoreleasepool {
                 [[r description] dataUsingEncoding:NSUTF8StringEncoding] options:0 error:NULL];
             if (!d) { check(NO, "probe returned JSON"); finish(); return; }
 
-            /* 3 paragraph formulas + 2 in a list + 1 in a table = 6 */
-            check([d[@"katex"] intValue] == 8,           "exactly the eight formulas render as .katex");
+            /* 3 in paragraphs, 2 in a list, 1 in a table, 2 in raw HTML,
+             * 3 padded/bare dollar blocks, 1 in a titled div = 12 */
+            check([d[@"katex"] intValue] == 12,          "exactly the twelve formulas render as .katex");
             /* \[…\] and $$…$$ are display; \(…\) is inline */
-            check([d[@"display"] intValue] == 3,         "\\[…\\] and $$…$$ render as display math");
+            check([d[@"display"] intValue] == 6,         "\\[…\\] and $$…$$ render as display math");
             check([d[@"inList"] boolValue],              "math inside a list item renders");
             check([d[@"inTable"] boolValue],             "math inside a table cell renders");
             check(![d[@"bareParen"] boolValue],          "\\(…\\) leaves no literal text behind");
@@ -133,6 +144,11 @@ int main(int argc, char **argv) { @autoreleasepool {
             check([d[@"footnote"] boolValue],            "\\[1\\] stays an escaped bracket, not display math");
             check([d[@"regexProse"] boolValue],          "\\(a group\\) stays escaped parens, not math");
             check([d[@"rawHtml"] boolValue],             "math inside a raw HTML block renders");
+            check([d[@"padded"] boolValue],              "padded $$ x $$ and bare $$0$$ still render");
+            check([d[@"glued"] boolValue],               "file\\(s\\) glued to a word stays an escape");
+            check([d[@"labels"] boolValue],              "\\[TODO\\] and \\[x\\] stay literal labels");
+            check([d[@"preIntact"] boolValue],           "raw HTML <pre><code> is shown, not rendered");
+            check([d[@"attrIntact"] boolValue],          "a > inside an attribute value is not mis-split");
 
             if (gFailures) printf("  probe: %s\n", [[r description] UTF8String]);
             finish();

@@ -83,10 +83,13 @@ showversion = 1      ; faint plugin-version badge in the bottom-right corner (1/
 ```
 
 Math notes: `\(` and `\[` are also Markdown's escapes for a literal paren or
-bracket, so a span is only rendered as math when it looks like math — `see footnote
-\[1\]` and `match \(a group\)` are left as text. Delimiters inside code spans and
-fenced blocks are never touched, and math inside a raw HTML block (the common
-`<div align="center">$$…$$</div>`) renders too.
+bracket, so a backslash-delimited span is only rendered as math when it looks like
+one — `see footnote \[1\]`, `\[TODO\]` and `match \(a group\)` stay as text, and a
+delimiter glued to a word (`file\(s\)`) is always an escape. `$$…$$` carries no such
+ambiguity and is never second-guessed. Delimiters inside code spans, fenced blocks
+and raw HTML `<pre>`/`<code>` are never touched; math inside a raw HTML block (the
+common `<div align="center">$$…$$</div>`) does render. The delimiter logic lives in
+[`assets/mathext.js`](assets/mathext.js).
 
 **Seeing the version:** the bottom-right corner shows a faint `MarkdownView vX.Y.Z`
 badge (hover to brighten). Hide it with `showversion = 0`. The version string is

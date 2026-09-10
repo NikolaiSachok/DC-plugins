@@ -30,8 +30,10 @@ independently and tagged below.
   `<div align="center">$$…$$</div>` idiom). `auto-render.min.js` is no longer
   vendored or loaded. Because `\(` and `\[` are also Markdown's escapes for a
   literal paren or bracket, a span is only treated as math when it looks like
-  math, so prose such as `see footnote \[1\]` is left alone; delimiters inside
-  code spans and fenced blocks are never touched. Pre-existing since math landed
+  math, so prose such as `see footnote \[1\]`, `\[TODO\]` and `file\(s\)` is left
+  alone; `$$…$$` carries no such ambiguity and is never second-guessed. Delimiters
+  inside code spans, fenced blocks and raw HTML `<pre>`/`<code>` are never touched.
+  The delimiter logic lives in `assets/mathext.js`. Pre-existing since math landed
   in 0.2.0. Closes #23.
 
 ## book-wlx 0.1.1 — 2026-09-10
