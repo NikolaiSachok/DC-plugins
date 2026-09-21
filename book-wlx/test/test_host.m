@@ -148,6 +148,10 @@ int main(int argc, char **argv) {
               @"script and iframe elements are stripped");
         check([runJS(web, @"document.querySelectorAll('.chapter [onerror], .chapter [onclick]').length") intValue] == 0,
               @"inline event handlers are stripped");
+        /* The chrome draws data-label as text; a book's own data-label must not. */
+        check([runJS(web, @"(function(){var e=document.querySelector('.chapter [data-label]');"
+                          @"return !!e&&getComputedStyle(e,'::before').content==='none';})()") boolValue],
+              @"a book's own data-label is not drawn as text");
         check([runJS(web, @"[...document.querySelectorAll('.chapter [src]')]"
                           @".every(e => /^(x-book:|data:)/.test(e.getAttribute('src')))") boolValue],
               @"every remaining resource is in-book or inlined — none remote");

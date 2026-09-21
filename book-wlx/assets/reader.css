@@ -103,8 +103,11 @@ html, body {
                overflow: hidden; text-overflow: ellipsis; }
 #book-author { flex: 0 3 auto; min-width: 0; opacity: .75;
                overflow: hidden; text-overflow: ellipsis; }
-/* Chrome labels are generated content — see setLabel in reader.js. */
-[data-label]::before { content: attr(data-label); }
+/* Chrome labels are generated content — see setLabel in reader.js. Scoped to
+ * the chrome: DOMPurify keeps data-* attributes, so a page-wide rule would draw
+ * a book's own data-label values as text the book never showed. */
+#bar [data-label]::before, #toc [data-label]::before,
+#version[data-label]::before { content: attr(data-label); }
 #book-author:not([data-label=""])::before { content: "· " attr(data-label); }
 
 #bar-tools { display: flex; align-items: center; gap: 2px; flex: none; }
