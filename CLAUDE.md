@@ -126,16 +126,27 @@ symptom is *silent*: text selects, Cmd+C copies nothing, no error anywhere.
 ### Take keyboard focus yourself, but not in Quick View
 DC's `TWlxModule.SetFocus` is a **no-op on macOS** (Windows/Qt/GTK branches only),
 so a viewer plugin opened with F3 has no keyboard focus: PgUp/PgDn and the arrows
-do nothing until the page is clicked. Take focus in `-viewDidMoveToWindow` and on
-`NSWindowDidBecomeKeyNotification`, but **only when no control holds it**. In
-the F3 viewer DC leaves focus on the bare form: LCL's window content is a scroll
-view, and its document view (`TCocoaWindowContentDocument`) is first responder,
-with the plugin view added beside it, not inside it. So an "is focus on one of my
-ancestors?" test is not enough (that was the first fix, and it failed in DC). In
-Quick View (Ctrl+Q) a file-panel control nested deep in the main window holds
-focus and must keep it. Diagnose host focus from a file log inside DC: `NSLog`
-from DC's process shows up as `<private>` in `log show`. Copy the implementation from `markdown-wlx/MarkdownView.m` or
-`book-wlx/BookView.m` (it is the same in both), and ship `test/focus_verify.m`.
+do nothing until the page is clicked.
+
+1. Take focus on `NSWindowDidBecomeKeyNotification` (dispatched async, after LCL's
+   own activation handling), or at once if the window is already key. **Not
+   earlier:** LCL records the active form only when one of its controls gets focus,
+   so focus taken while the viewer is still hidden leaves the main window
+   "active", and DC's Find dialog (`poOwnerFormCenter`, `DefaultMonitor` = active
+   form) opens on the main window's monitor.
+2. Take it **only when no control holds it**. In the F3 viewer DC leaves focus on
+   the bare form: LCL's window content is a scroll view, and its document view
+   (`TCocoaWindowContentDocument`) is first responder, with the plugin view added
+   beside it, not inside it. An "is focus on one of my ancestors?" test is not
+   enough (that was the first fix, and it failed in DC). In Quick View (Ctrl+Q) a
+   file-panel control nested deep in the main window holds focus and must keep it.
+3. Copy the implementation from `markdown-wlx/MarkdownView.m` or
+   `book-wlx/BookView.m` (it is the same in both), and ship `test/focus_verify.m`.
+   It decides key status itself: a background test process cannot make its own
+   windows key, so relying on the window server makes it flaky.
+4. Diagnose host focus from a file log written inside DC: `NSLog` from DC's process
+   shows up as `<private>` in `log show` (and in zsh, call `/usr/bin/log`; `log` is
+   a shell builtin).
 
 ### Find goes through `ListSearchTextW`, and must not hit the chrome
 DC enables Find / Find Next / Find Previous in the viewer **only** for a plugin that
