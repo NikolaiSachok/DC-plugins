@@ -711,9 +711,14 @@ static BOOL LooksLikeFB2(NSData *data) {
     if (self.window && [self focusIsUnclaimed]) [self.window makeFirstResponder:self.web];
 }
 
-/* Checked when the view lands in a window and again when that window becomes
- * key: DC loads the plugin before it shows the viewer, and LCL settles focus
- * as the form activates. */
+/* Taken once the viewer window is key and LCL has handled its activation, not
+ * earlier. LCL records which form is active only when one of its own controls
+ * gets focus; taking focus before that leaves DC believing the main window is
+ * active, and its Find dialog (poOwnerFormCenter, DefaultMonitor = active
+ * form) then opens on the main window's monitor instead of the viewer's. DC
+ * loads the plugin before it shows the viewer, so this normally happens on
+ * NSWindowDidBecomeKeyNotification; a window that is already key (the viewer
+ * switched into plugin mode) is handled straight away. */
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
     NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
@@ -721,7 +726,7 @@ static BOOL LooksLikeFB2(NSData *data) {
     if (!self.window) return;
     [nc addObserver:self selector:@selector(windowDidBecomeKey:)
                name:NSWindowDidBecomeKeyNotification object:self.window];
-    [self claimFocusIfUnclaimed];
+    if (self.window.isKeyWindow) [self windowDidBecomeKey:nil];
 }
 
 - (void)windowDidBecomeKey:(NSNotification *)note {
