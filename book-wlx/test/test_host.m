@@ -123,10 +123,17 @@ int main(int argc, char **argv) {
                                   @"!!document.getElementById('colophon')", 20);
         check(ready, @"all three spine documents render");
 
-        check([str(runJS(web, @"document.getElementById('book-title').textContent"))
+        check([str(runJS(web, @"document.getElementById('book-title').dataset.label"))
                   isEqualToString:@"The Wandering Lamp"], @"title comes from the OPF metadata");
-        check([str(runJS(web, @"document.getElementById('book-author').textContent"))
+        check([str(runJS(web, @"document.getElementById('book-author').dataset.label"))
                   isEqualToString:@"Marguerite Vance"], @"author comes from the OPF metadata");
+        /* While a book is still opening the author has no label yet: no stray
+         * separator after the title. */
+        check([runJS(web, @"(function(){var a=document.getElementById('book-author');"
+                          @"var v=a.getAttribute('data-label');a.removeAttribute('data-label');"
+                          @"var c=getComputedStyle(a,'::before').content;"
+                          @"a.setAttribute('data-label',v);return c==='none';})()") boolValue],
+              @"no author separator before the author is known");
         check([runJS(web, @"document.querySelectorAll('#toc-list a').length") intValue] == 4,
               @"nav document yields 4 TOC entries");
         check([runJS(web, @"document.querySelectorAll('#toc-list li[data-depth=\"1\"]').length") intValue] == 1,
@@ -148,6 +155,10 @@ int main(int argc, char **argv) {
               @"script and iframe elements are stripped");
         check([runJS(web, @"document.querySelectorAll('.chapter [onerror], .chapter [onclick]').length") intValue] == 0,
               @"inline event handlers are stripped");
+        /* The chrome draws data-label as text; a book's own data-label must not. */
+        check([runJS(web, @"(function(){var e=document.querySelector('.chapter [data-label]');"
+                          @"return !!e&&getComputedStyle(e,'::before').content==='none';})()") boolValue],
+              @"a book's own data-label is not drawn as text");
         check([runJS(web, @"[...document.querySelectorAll('.chapter [src]')]"
                           @".every(e => /^(x-book:|data:)/.test(e.getAttribute('src')))") boolValue],
               @"every remaining resource is in-book or inlined — none remote");
@@ -169,7 +180,7 @@ int main(int argc, char **argv) {
         check([runJS(web, @"getComputedStyle(document.documentElement)"
                           @".getPropertyValue('--font-size').trim()") length] > 0,
               @"typography variables are applied");
-        check([str(runJS(web, @"document.getElementById('percent').textContent")) hasSuffix:@"%"],
+        check([str(runJS(web, @"document.getElementById('percent').dataset.label")) hasSuffix:@"%"],
               @"reading progress is reported");
         BOOL tocWasOpen = [runJS(web, @"document.documentElement.classList.contains('toc-open')") boolValue];
         check(tocWasOpen, @"the sidebar starts open on a wide window");
@@ -189,7 +200,7 @@ int main(int argc, char **argv) {
         BOOL ready2 = waitFor(web, @"document.querySelectorAll('.chapter').length === 2 &&"
                                    @"!!document.getElementById('colophon')", 20);
         check(ready2, @"the second book replaces the first");
-        check([str(runJS(web, @"document.getElementById('book-title').textContent"))
+        check([str(runJS(web, @"document.getElementById('book-title').dataset.label"))
                   isEqualToString:@"A Ledger of Small Weights"], @"the new book's title is shown");
         check([runJS(web, @"document.querySelectorAll('#toc-list a').length") intValue] == 3,
               @"NCX navMap yields 3 TOC entries");
@@ -205,10 +216,10 @@ int main(int argc, char **argv) {
                                    @"!!document.getElementById('colophon')", 20);
         check(ready3, @"the FictionBook renders");
 
-        check([str(runJS(web, @"document.getElementById('book-title').textContent"))
+        check([str(runJS(web, @"document.getElementById('book-title').dataset.label"))
                   isEqualToString:@"Блуждающая лампа"],
               @"title comes from <book-title>, decoded from windows-1251");
-        check([str(runJS(web, @"document.getElementById('book-author').textContent"))
+        check([str(runJS(web, @"document.getElementById('book-author').dataset.label"))
                   isEqualToString:@"Маргарита Ванс"], @"author is assembled from name parts");
         check([runJS(web, @"document.querySelectorAll('#toc-list a').length") intValue] == 6,
               @"contents lists every titled section plus each body's own title");
@@ -253,7 +264,7 @@ int main(int argc, char **argv) {
         check(rc == 0, @"ListLoadNext accepts an .fbz archive");
         check(waitFor(web, @"document.querySelectorAll('.chapter').length >= 3", 20),
               @"the zipped FictionBook renders too");
-        check([str(runJS(web, @"document.getElementById('book-title').textContent"))
+        check([str(runJS(web, @"document.getElementById('book-title').dataset.label"))
                   isEqualToString:@"Блуждающая лампа"], @"same book, read out of the archive");
 
         printf("\nreading position survives a round trip\n");

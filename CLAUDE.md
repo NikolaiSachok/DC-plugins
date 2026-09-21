@@ -123,6 +123,39 @@ symptom is *silent*: text selects, Cmd+C copies nothing, no error anywhere.
 4. Ship `test/copy_verify.m` and keep it green. Note the local `listplug.h` is a
    trimmed copy — add the `lc_*` constants when you add the entry point.
 
+### Take keyboard focus yourself, but not in Quick View
+DC's `TWlxModule.SetFocus` is a **no-op on macOS** (Windows/Qt/GTK branches only),
+so a viewer plugin opened with F3 has no keyboard focus: PgUp/PgDn and the arrows
+do nothing until the page is clicked. Take focus in `-viewDidMoveToWindow` and on
+`NSWindowDidBecomeKeyNotification`, but **only when no control holds it**. In
+the F3 viewer DC leaves focus on the bare form: LCL's window content is a scroll
+view, and its document view (`TCocoaWindowContentDocument`) is first responder,
+with the plugin view added beside it, not inside it. So an "is focus on one of my
+ancestors?" test is not enough (that was the first fix, and it failed in DC). In
+Quick View (Ctrl+Q) a file-panel control nested deep in the main window holds
+focus and must keep it. Diagnose host focus from a file log inside DC: `NSLog`
+from DC's process shows up as `<private>` in `log show`. Copy the implementation from `markdown-wlx/MarkdownView.m` or
+`book-wlx/BookView.m` (it is the same in both), and ship `test/focus_verify.m`.
+
+### Find goes through `ListSearchTextW`, and must not hit the chrome
+DC enables Find / Find Next / Find Previous in the viewer **only** for a plugin that
+exports a search entry point (`TWlxModule.CanSearch`). Without one the actions are
+hidden and the user has to switch to Text mode to search.
+
+1. Export `ListSearchTextW` (UTF-16; DC prefers it over the ANSI variant) and run
+   `-[WKWebView findString:withConfiguration:completionHandler:]`. On
+   `lcs_findfirst`, clear the selection first. Beep on a miss (DC ignores the
+   return value). Keep searches strictly ordered: if only some searches take an
+   async hop, a quick Find Previous can overtake the fresh search it follows.
+2. WebKit's find matches **every DOM text node**, `user-select:none` included.
+   Draw page chrome labels (toolbar, sidebar, badge) as CSS generated content
+   (`data-label` + `::before{content:attr(data-label)}`) so they are never a hit.
+3. Content that loads incrementally must report "ready" (with its load token)
+   through a message handler before searches run. Do **not** wait inside the page
+   with `callAsyncJavaScript`: a call in flight across a navigation
+   (`ListLoadNext`) never calls back, and the search queue hangs.
+4. Ship `test/search_verify.m`, and confirm Cmd+F / F3 in the real Double Commander.
+
 ## Per-plugin checklist (for a new plugin, e.g. image-view)
 Each plugin directory owns: `build.sh` (universal + ad-hoc sign), `install.sh`
 (idempotent, prebuilt-bundle aware, backs up `doublecmd.xml`), `register_plugin.py` if

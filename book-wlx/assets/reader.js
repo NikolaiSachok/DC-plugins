@@ -66,6 +66,12 @@
   }
   function textOf(el) { return el ? (el.textContent || "").trim() : ""; }
 
+  /* Chrome text (title bar, contents, progress, version) is drawn as CSS
+   * generated content from data-label rather than written into the DOM, so
+   * the viewer's Find — WebKit's find engine — only ever lands in the book,
+   * and Select All / Copy can't pick it up. */
+  function setLabel(el, text) { el.setAttribute("data-label", text); }
+
   /* FB2 writes xlink:href, but the prefix it binds varies between producers. */
   function hrefOf(el) {
     return el.getAttributeNS(XLINK, "href") || el.getAttribute("xlink:href") ||
@@ -693,7 +699,7 @@
       var li = document.createElement("li");
       li.setAttribute("data-depth", String(Math.min(e.depth, 3)));
       var a = document.createElement("a");
-      a.textContent = e.label || "—";
+      setLabel(a, e.label || "—");
       a.href = "#";
       a.addEventListener("click", function (ev) {
         ev.preventDefault();
@@ -773,7 +779,7 @@
     var scrollable = doc.scrollHeight - window.innerHeight;
     var pct = scrollable > 0 ? Math.min(1, Math.max(0, window.scrollY / scrollable)) : 0;
     progressEl.style.width = (pct * 100).toFixed(2) + "%";
-    percentEl.textContent = Math.round(pct * 100) + "%";
+    setLabel(percentEl, Math.round(pct * 100) + "%");
 
     var i = currentChapterIndex();
     var c = state.chapters[i];
@@ -818,8 +824,8 @@
   /* ---------- chrome ---------- */
 
   function wireChrome(book) {
-    $("book-title").textContent = book.meta.title || CFG.fileName;
-    $("book-author").textContent = book.meta.author || "";
+    setLabel($("book-title"), book.meta.title || CFG.fileName);
+    setLabel($("book-author"), book.meta.author || "");
     document.title = book.meta.title || CFG.fileName;
 
     $("toc-toggle").addEventListener("click", function () {
@@ -873,7 +879,7 @@
     if (CFG.showVersion) {
       var v = document.createElement("div");
       v.id = "version";
-      v.textContent = "BookView v" + CFG.version;
+      setLabel(v, "BookView v" + CFG.version);
       document.body.appendChild(v);
     }
   }
@@ -935,5 +941,10 @@
     });
   }).catch(function (err) {
     fail("This book could not be opened — " + (err && err.message ? err.message : err) + ".");
+  }).then(function () {
+    /* Every chapter is in (or the book failed to open): the native side holds
+     * searches until now, because WebKit's find only sees text that is in the
+     * document and chapters arrive one at a time. */
+    post({ t: "ready", k: CFG.token });
   });
 })();

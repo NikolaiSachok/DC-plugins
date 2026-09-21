@@ -6,6 +6,33 @@ independently and tagged below.
 
 ## [Unreleased]
 
+## book-wlx 0.2.0 — 2026-09-21
+
+### Added
+- **book-wlx:** Search the open book. Double Commander only enables Find /
+  Find Next / Find Previous for a lister plugin that exports a search entry
+  point, so a book could not be searched at all. The plugin now exports
+  `ListSearchTextW` and runs WebKit's own find engine over the whole book: the
+  hit is selected and scrolled into view, searches cross chapters and wrap, and
+  the *Case sensitive* and *Backwards* options are honored. A miss beeps. A
+  search waits until every chapter is in, so one issued the moment a long book
+  opens still reaches its last page. Closes #28.
+
+### Changed
+- **book-wlx:** The title bar, contents sidebar, progress readout and version
+  badge draw their labels as CSS generated content, so Find never lands on them
+  (a chapter title would otherwise be found in the sidebar first).
+
+### Fixed
+- **book-wlx:** PgUp/PgDn and the arrow keys did nothing in the F3 viewer until
+  the page was clicked. Double Commander's call to focus the plugin
+  (`TWlxModule.SetFocus`) is a no-op on macOS. The plugin now takes focus itself
+  when the viewer opens, but not in Quick View, where the file panel keeps its
+  keys.
+- **book-wlx:** In a narrow viewer the book title collapsed to its first letter
+  while the author kept its full width. The author now gives way first and both
+  truncate with an ellipsis.
+
 ## markdown-wlx 0.4.0 — 2026-09-21
 
 ### Added

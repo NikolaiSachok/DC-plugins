@@ -97,9 +97,20 @@ html, body {
   flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px;
   white-space: nowrap; overflow: hidden;
 }
-#book-title  { color: var(--fg); font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
-#book-author { flex: none; opacity: .75; }
-#book-author:not(:empty)::before { content: "· "; }
+/* Both truncate when the bar is narrow, but the author gives way first (it
+ * shrinks three times as fast), so the title stays readable. */
+#book-title  { flex: 0 1 auto; min-width: 0; color: var(--fg); font-weight: 600;
+               overflow: hidden; text-overflow: ellipsis; }
+#book-author { flex: 0 3 auto; min-width: 0; opacity: .75;
+               overflow: hidden; text-overflow: ellipsis; }
+/* Chrome labels are generated content — see setLabel in reader.js. Scoped to
+ * the chrome: DOMPurify keeps data-* attributes, so a page-wide rule would draw
+ * a book's own data-label values as text the book never showed. */
+#bar [data-label]::before, #toc [data-label]::before,
+#version[data-label]::before { content: attr(data-label); }
+/* [data-label] as well: until the reader sets it (a book still opening, or one
+ * that failed to) there is no author to separate from the title. */
+#book-author[data-label]:not([data-label=""])::before { content: "· " attr(data-label); }
 
 #bar-tools { display: flex; align-items: center; gap: 2px; flex: none; }
 #font-down, #font-up { font-size: 13px; min-width: 26px; }

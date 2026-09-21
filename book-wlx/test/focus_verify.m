@@ -176,7 +176,7 @@ static void RunCase(Setup setup, const char *title, void (^next)(void)) {
 }
 
 int main(int argc, char **argv) { @autoreleasepool {
-    if (argc < 3) { fprintf(stderr, "usage: focus_verify <plugin.wlx> <long.md>\n"); return 2; }
+    if (argc < 3) { fprintf(stderr, "usage: focus_verify <BookView.wlx> <book>\n"); return 2; }
     gFile = argv[2];
 
     NSApplication *app = [NSApplication sharedApplication];

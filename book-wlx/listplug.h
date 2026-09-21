@@ -11,6 +11,7 @@
 #define __stdcall
 
 typedef void *HWND;
+typedef uint16_t WCHAR; /* FPC's WideChar: UTF-16 code unit */
 
 /* ListLoad / ListLoadNext return codes */
 #define LISTPLUGIN_OK    0
@@ -32,6 +33,14 @@ typedef void *HWND;
 #define lc_newparams     2
 #define lc_selectall     3
 #define lc_setpercent    4
+
+/* ListSearchText(W) flags. DC's viewer calls the W variant first when exported
+ * (uwlxmodule.pas) and passes lcs_findfirst on a fresh search from its Find
+ * dialog; it never sets lcs_wholewords. */
+#define lcs_findfirst    1
+#define lcs_matchcase    2
+#define lcs_wholewords   4
+#define lcs_backwards    8
 
 typedef struct {
     int   size;

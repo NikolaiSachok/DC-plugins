@@ -98,6 +98,7 @@ CH3 = """<?xml version="1.0" encoding="utf-8"?>
   <img src="https://example.invalid/tracker.gif" alt="remote"/>
   <a href="https://example.invalid/somewhere">an outside link</a>
   <p onclick="window.PWNED = 3;">clickable prose</p>
+  <p>A <span data-label="LABEL-LEAK">plain</span> word.</p>
   <iframe src="https://example.invalid/frame"></iframe>
 </body></html>
 """

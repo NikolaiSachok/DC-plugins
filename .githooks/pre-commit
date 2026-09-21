@@ -57,7 +57,8 @@ if printf '%s\n' "$staged" | grep -qE '^book-wlx/(BookView\.m|zipreader\.[ch]|li
     esac
 
     for sym in _ListLoad _ListLoadNext _ListCloseWindow \
-               _ListGetDetectString _ListSetDefaultParams _ListSendCommand; do
+               _ListGetDetectString _ListSetDefaultParams _ListSendCommand \
+               _ListSearchTextW; do
         nm -gU "$wlx" | grep -q " T $sym" \
             || { echo "[pre-commit] FAIL: missing export $sym"; exit 1; }
     done
