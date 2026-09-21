@@ -99,7 +99,10 @@ static void RunCase(Setup setup, const char *title, void (^next)(void)) {
     [form addSubview:other];
     other.hidden = (setup != QuickView);
 
-    [win makeKeyAndOrderFront:nil];
+    /* DC loads the plugin first and shows the viewer after; the other cases
+     * cover a window that is already key (the viewer switched to plugin mode). */
+    BOOL showAfterLoad = (setup == FocusFormDocument);
+    if (!showAfterLoad) [win makeKeyAndOrderFront:nil];
     switch (setup) {
         case FocusFormDocument:  [win makeFirstResponder:document]; break;
         case FocusWindow:        [win makeFirstResponder:nil];   break;
@@ -112,6 +115,10 @@ static void RunCase(Setup setup, const char *title, void (^next)(void)) {
     HWND pw = ListLoad((__bridge HWND)panel, (char *)gFile, 0);
     if (!pw) { check(NO, "ListLoad returned a window"); next(); return; }
     WKWebView *web = FindWebView((__bridge NSView *)pw);
+    if (showAfterLoad) {
+        check(win.firstResponder == before, "focus is left alone until the viewer is shown");
+        [win makeKeyAndOrderFront:nil];
+    }
 
     /* Let the page render and the window's key status settle. */
     After(1.5, ^{
