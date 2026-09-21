@@ -66,12 +66,32 @@ static void ScrollY(WKWebView *web, void (^then)(double)) {
     }];
 }
 
+/* Key status is the test's to decide, not the window server's. A background
+ * test process cannot reliably make itself active (macOS declines activation
+ * requests from an app that isn't frontmost), and without that no window of
+ * ours is ever key, so the outcome would depend on what else is on screen.
+ * `key` is reported as key status, and flipping it on posts the same
+ * notification AppKit posts. */
+@interface HostWindow : NSWindow
+@property (nonatomic) BOOL key;
+@end
+@implementation HostWindow
+- (BOOL)isKeyWindow { return self.key; }
+- (void)setKey:(BOOL)key {
+    BOOL was = _key;
+    _key = key;
+    if (key && !was)
+        [[NSNotificationCenter defaultCenter] postNotificationName:NSWindowDidBecomeKeyNotification
+                                                            object:self];
+}
+@end
+
 typedef enum { FocusFormDocument, FocusWindow, FocusContainer, FocusHiddenControl, QuickView } Setup;
 
 /* Build a host window standing in for DC, load the plugin into it, and report. */
 static void RunCase(Setup setup, const char *title, void (^next)(void)) {
     printf("%s:\n", title);
-    NSWindow *win = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 400)
+    HostWindow *win = [[HostWindow alloc] initWithContentRect:NSMakeRect(0, 0, 800, 400)
         styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
     win.releasedWhenClosed = NO;
     NSView *form = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 800, 400)];
@@ -102,7 +122,7 @@ static void RunCase(Setup setup, const char *title, void (^next)(void)) {
     /* DC loads the plugin first and shows the viewer after; the other cases
      * cover a window that is already key (the viewer switched to plugin mode). */
     BOOL showAfterLoad = (setup == FocusFormDocument);
-    if (!showAfterLoad) [win makeKeyAndOrderFront:nil];
+    if (!showAfterLoad) { [win orderFront:nil]; win.key = YES; }
     switch (setup) {
         case FocusFormDocument:  [win makeFirstResponder:document]; break;
         case FocusWindow:        [win makeFirstResponder:nil];   break;
@@ -117,13 +137,15 @@ static void RunCase(Setup setup, const char *title, void (^next)(void)) {
     WKWebView *web = FindWebView((__bridge NSView *)pw);
     if (showAfterLoad) {
         check(win.firstResponder == before, "focus is left alone until the viewer is shown");
-        [win makeKeyAndOrderFront:nil];
+        [win orderFront:nil];
+        win.key = YES;
     }
 
     /* Let the page render and the window's key status settle. */
     After(1.5, ^{
         void (^done)(void) = ^{
             ListCloseWindow(pw);
+            win.key = NO;
             [win orderOut:nil];
             next();
         };
@@ -159,7 +181,6 @@ int main(int argc, char **argv) { @autoreleasepool {
 
     NSApplication *app = [NSApplication sharedApplication];
     [app setActivationPolicy:NSApplicationActivationPolicyAccessory];
-    [app activateIgnoringOtherApps:YES];
 
     void *h = dlopen(argv[1], RTLD_NOW);
     if (!h) { fprintf(stderr, "dlopen failed: %s\n", dlerror()); return 2; }
