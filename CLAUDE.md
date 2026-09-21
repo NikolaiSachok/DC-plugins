@@ -123,6 +123,16 @@ symptom is *silent*: text selects, Cmd+C copies nothing, no error anywhere.
 4. Ship `test/copy_verify.m` and keep it green. Note the local `listplug.h` is a
    trimmed copy — add the `lc_*` constants when you add the entry point.
 
+### Take keyboard focus yourself, but not in Quick View
+DC's `TWlxModule.SetFocus` is a **no-op on macOS** (Windows/Qt/GTK branches only),
+so a viewer plugin opened with F3 has no keyboard focus: PgUp/PgDn and the arrows
+do nothing until the page is clicked. Take focus in `-viewDidMoveToWindow` and on
+`NSWindowDidBecomeKeyNotification`, but **only when nobody visibly holds it**
+(focus on the window, on one of your own container views, or on a hidden
+control). In Quick View (Ctrl+Q) the visible file list holds focus and must keep
+it. Copy the implementation from `markdown-wlx/MarkdownView.m` or
+`book-wlx/BookView.m` (it is the same in both), and ship `test/focus_verify.m`.
+
 ### Find goes through `ListSearchTextW`, and must not hit the chrome
 DC enables Find / Find Next / Find Previous in the viewer **only** for a plugin that
 exports a search entry point (`TWlxModule.CanSearch`). Without one the actions are

@@ -674,7 +674,55 @@ static BOOL LooksLikeFB2(NSData *data) {
     [self runSearches];
 }
 
+#pragma mark Keyboard focus
+
+/* Double Commander means to hand the plugin keyboard focus when the F3 viewer
+ * opens (TfrmViewer.ActivatePlugin -> TWlxModule.SetFocus), but on macOS that
+ * call is a no-op: it only has Windows, Qt and GTK branches. So PgUp/PgDn and
+ * the arrows went nowhere until the page was clicked. The plugin takes focus
+ * itself instead.
+ *
+ * Only when nobody else visibly holds it, though. The same plugin also runs in
+ * Quick View (Ctrl+Q), next to the file panel, where DC deliberately does not
+ * focus it — taking focus there would steal the panel's cursor keys. In the
+ * viewer, focus sits on the window, on one of our own container views, or on a
+ * control hidden behind the plugin (the text viewer); in Quick View it sits on
+ * the visible file list, which is none of those. */
+- (BOOL)focusIsUnclaimed {
+    NSWindow *win = self.window;
+    NSResponder *fr = win.firstResponder;
+    if (!fr || fr == win) return YES;
+    if (![fr isKindOfClass:[NSView class]]) return NO;
+    NSView *v = (NSView *)fr;
+    if (v == self.web || [v isDescendantOf:self.web]) return NO; /* already ours */
+    return [self isDescendantOf:v] || v.isHiddenOrHasHiddenAncestor;
+}
+
+- (void)claimFocusIfUnclaimed {
+    if (self.window && [self focusIsUnclaimed]) [self.window makeFirstResponder:self.web];
+}
+
+/* Checked when the view lands in a window and again when that window becomes
+ * key: DC loads the plugin before it shows the viewer, and LCL settles focus
+ * as the form activates. */
+- (void)viewDidMoveToWindow {
+    [super viewDidMoveToWindow];
+    NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+    [nc removeObserver:self name:NSWindowDidBecomeKeyNotification object:nil];
+    if (!self.window) return;
+    [nc addObserver:self selector:@selector(windowDidBecomeKey:)
+               name:NSWindowDidBecomeKeyNotification object:self.window];
+    [self claimFocusIfUnclaimed];
+}
+
+- (void)windowDidBecomeKey:(NSNotification *)note {
+    (void)note;
+    /* After LCL's own activation handling, not before it. */
+    dispatch_async(dispatch_get_main_queue(), ^{ [self claimFocusIfUnclaimed]; });
+}
+
 - (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
     [_web.configuration.userContentController removeScriptMessageHandlerForName:@"dcbook"];
     _handler.archive = nil;   /* released once the last background read is done */
 }

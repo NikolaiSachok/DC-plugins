@@ -24,6 +24,11 @@ independently and tagged below.
   (a chapter title would otherwise be found in the sidebar first).
 
 ### Fixed
+- **book-wlx:** PgUp/PgDn and the arrow keys did nothing in the F3 viewer until
+  the page was clicked. Double Commander's call to focus the plugin
+  (`TWlxModule.SetFocus`) is a no-op on macOS. The plugin now takes focus itself
+  when the viewer opens, but not in Quick View, where the file panel keeps its
+  keys.
 - **book-wlx:** In a narrow viewer the book title collapsed to its first letter
   while the author kept its full width. The author now gives way first and both
   truncate with an ellipsis.

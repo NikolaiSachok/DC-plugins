@@ -228,6 +228,10 @@ clang -fobjc-arc -framework Cocoa -framework WebKit -o build/copy_verify test/co
 clang -fobjc-arc -framework Cocoa -framework WebKit -o build/search_verify test/search_verify.m
 ./build/search_verify build/BookView.wlx build/samples
 
+# PgUp/PgDn and the arrows work straight after F3; Quick View keeps its focus
+clang -fobjc-arc -framework Cocoa -framework WebKit -o build/focus_verify test/focus_verify.m
+./build/focus_verify build/BookView.wlx build/samples/sample3.epub
+
 # Visual check: render a book and save a PNG
 clang -fobjc-arc -framework Cocoa -framework WebKit -o build/snap_host test/snap_host.m
 ./build/snap_host build/BookView.wlx build/samples/sample3.epub build/shot.png 0 1100 860
@@ -255,6 +259,10 @@ are never a hit, a hit lands below the fixed title bar, searches cross chapters
 and wrap in both directions, a quick Find Previous cannot overtake the search it
 follows, a book reloaded with `ListLoadNext` is searched afresh, and the error
 page for a file that is not a book answers a search instead of hanging it.
+
+`focus_verify.m` checks keyboard focus on open: in a viewer-like host the web view
+takes focus and real PgDn / Down-arrow events scroll the book; in a
+Quick-View-like host the visible file list keeps its focus.
 
 `esc_verify.m` checks that Escape is re-posted to the host so the viewer closes.
 It is a regression net, not proof — Double Commander is a Lazarus/LCL app and a
