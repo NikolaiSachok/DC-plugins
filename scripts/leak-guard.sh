@@ -19,9 +19,11 @@ scan() { # <regex> <human description>
     local hits
     # -e "$1" so a pattern that starts with '-' (e.g. a PEM header) is treated as
     # a pattern, not as grep options.
+    # --exclude=.git as well as --exclude-dir: in a linked worktree `.git` is a
+    # file holding the absolute path of the main repository's git directory.
     hits=$(grep -rInE -e "$1" . \
         --binary-files=without-match \
-        --exclude-dir=.git --exclude-dir=build 2>/dev/null \
+        --exclude-dir=.git --exclude=.git --exclude-dir=build 2>/dev/null \
         | grep -v "$self")
     if [ -n "$hits" ]; then
         printf '✗ %s\n%s\n\n' "$2" "$hits"
