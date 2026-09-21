@@ -3,11 +3,14 @@
  * Double Commander's TWlxModule.SetFocus is a no-op on macOS, so when the F3
  * viewer opened nothing gave the web view keyboard focus: PgUp/PgDn and the
  * arrows did nothing until the page was clicked. The plugin now takes focus
- * itself — but only when nobody else visibly holds it, because the same plugin
+ * itself — but only when no control holds it, because the same plugin
  * also runs in Quick View next to the file panel, which must keep its keys.
  *
- * Viewer: focus starts on the window, on the plugin's own container, or on a
- * hidden control (DC's text viewer behind the plugin panel). After loading, the
+ * Viewer: first as Double Commander actually builds it (seen in its logs): the
+ * window's content view is a scroll view, its document view — the bare form —
+ * is first responder, and the plugin is added to the content view beside it.
+ * Then focus on the window, on the plugin's own container, or on a hidden
+ * control (DC's text viewer behind the plugin panel). After loading, the
  * web view must be first responder and real PgDn / Down-arrow key events sent
  * through the window must scroll the page.
  *
@@ -63,7 +66,7 @@ static void ScrollY(WKWebView *web, void (^then)(double)) {
     }];
 }
 
-typedef enum { FocusWindow, FocusContainer, FocusHiddenControl, QuickView } Setup;
+typedef enum { FocusFormDocument, FocusWindow, FocusContainer, FocusHiddenControl, QuickView } Setup;
 
 /* Build a host window standing in for DC, load the plugin into it, and report. */
 static void RunCase(Setup setup, const char *title, void (^next)(void)) {
@@ -73,11 +76,22 @@ static void RunCase(Setup setup, const char *title, void (^next)(void)) {
     win.releasedWhenClosed = NO;
     NSView *form = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 800, 400)];
     win.contentView = form;
+    NSView *document = nil;
+    if (setup == FocusFormDocument) {
+        /* LCL: TCocoaWindowContent (a scroll view) -> NSClipView ->
+         * TCocoaWindowContentDocument, which holds focus; ListLoad's parent is
+         * the content view itself. */
+        NSScrollView *content = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 800, 400)];
+        document = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 800, 400)];
+        content.documentView = document;
+        win.contentView = content;
+        form = content;
+    }
 
     /* The panel DC hands to ListLoad. */
-    NSView *panel = [[NSView alloc] initWithFrame:
+    NSView *panel = setup == FocusFormDocument ? form : [[NSView alloc] initWithFrame:
         setup == QuickView ? NSMakeRect(400, 0, 400, 400) : NSMakeRect(0, 0, 800, 400)];
-    [form addSubview:panel];
+    if (panel != form) [form addSubview:panel];
     /* A focusable control DC owns: the text viewer (hidden behind the plugin)
      * in the viewer, the file list (visible, beside it) in Quick View. */
     NSTextView *other = [[NSTextView alloc] initWithFrame:
@@ -87,6 +101,7 @@ static void RunCase(Setup setup, const char *title, void (^next)(void)) {
 
     [win makeKeyAndOrderFront:nil];
     switch (setup) {
+        case FocusFormDocument:  [win makeFirstResponder:document]; break;
         case FocusWindow:        [win makeFirstResponder:nil];   break;
         case FocusContainer:     [win makeFirstResponder:panel]; break;
         case FocusHiddenControl: [win makeFirstResponder:other]; break;
@@ -153,12 +168,14 @@ int main(int argc, char **argv) { @autoreleasepool {
             context:nil subtype:0 data1:0 data2:0] atStart:YES];
     };
 
+    RunCase(FocusFormDocument, "Viewer as DC builds it, focus on the form", ^{
     RunCase(FocusWindow, "Viewer, focus on the window", ^{
       RunCase(FocusContainer, "Viewer, focus on the plugin's container", ^{
         RunCase(FocusHiddenControl, "Viewer, focus on a hidden text viewer", ^{
           RunCase(QuickView, "Quick View, focus on the visible file list", finish);
         });
       });
+    });
     });
 
     [app run];
