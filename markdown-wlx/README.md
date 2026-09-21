@@ -57,6 +57,15 @@ EXT="MD"|EXT="MARKDOWN"|EXT="MDOWN"|EXT="MKD"|EXT="MKDN"|EXT="MDWN"|EXT="MDTXT"|
 
 Select a `.md` file and press **F3** (internal viewer). It opens rendered.
 
+### Searching
+
+The viewer's own **Find** (**F7** / **Cmd+F**), **Find Next** (**F3**) and
+**Find Previous** (**Shift+F3**) work on the rendered text, so you don't need to
+switch to Text mode to search. The hit is selected and scrolled into view,
+searches wrap at the ends of the document, and the dialog's *Case sensitive* and
+*Backwards* options are honored. A miss beeps. Regular expressions and *Hexadecimal*
+are Text-mode features: DC hides them for plugins.
+
 ### Switching to raw text and back
 
 In the Lister window, the **View** / mode menu lets you cycle viewer modes
@@ -165,6 +174,10 @@ Double Commander does. Build them with:
 - `test/copy_verify.m` — regression for the `ListSendCommand` export: drives
   `lc_selectall` + `lc_copy` the way DC's viewer does and asserts the system
   clipboard really changed (a text clipboard is saved and restored).
+- `test/search_verify.m` — regression for the `ListSearchTextW` export: runs it
+  on `test/search.md` with the flags DC's Find dialog passes (fresh search, Find
+  Next, Find Previous, match case, non-ASCII) and asserts which text is selected,
+  that the hit is scrolled into view, and that the version badge is never a hit.
 - `test/esc_verify.m` — end-to-end regression for the Escape-key fix: focuses the
   web view, sends Escape, asserts it reaches the host (so the viewer closes).
 - `test/math_verify.m` — KaTeX delimiter regression: asserts all three pairs

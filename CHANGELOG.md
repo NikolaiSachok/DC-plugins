@@ -6,6 +6,20 @@ independently and tagged below.
 
 ## [Unreleased]
 
+## markdown-wlx 0.4.0 — 2026-09-21
+
+### Added
+- **markdown-wlx:** Search in the rendered view. Double Commander only enables
+  Find / Find Next / Find Previous for a lister plugin that exports a search
+  entry point, so until now the only way to search a Markdown file was to switch
+  to Text mode. The plugin now exports `ListSearchTextW` and runs WebKit's own
+  find engine: the hit is selected and scrolled into view, searches wrap, and the
+  *Case sensitive* and *Backwards* options are honored. A miss beeps.
+
+### Changed
+- **markdown-wlx:** The version badge's label is now CSS generated content, not
+  document text, so Find never lands on it.
+
 ## markdown-wlx 0.3.2 — 2026-09-10
 
 ### Fixed

@@ -14,7 +14,7 @@
 #include <dlfcn.h>
 #include "listplug.h"
 
-#define MDV_VERSION "0.3.2"   /* single source of truth for the plugin version */
+#define MDV_VERSION "0.4.0"   /* single source of truth for the plugin version */
 
 #pragma mark - Helpers
 
@@ -253,6 +253,7 @@ static NSString *AssetMime(NSString *path) {
 @property (nonatomic, copy)   NSString *currentPath;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *scrollByPath;
 - (BOOL)loadMarkdownAtPath:(NSString *)mdPath;
+- (void)findText:(NSString *)text flags:(int)flags;
 @end
 
 @implementation MDScrollSink
@@ -354,6 +355,7 @@ static NSString *AssetMime(NSString *path) {
                        @"font:11px/1.4 -apple-system,BlinkMacSystemFont,sans-serif;"
                        @"color:#8b949e;background:rgba(127,127,127,.12);padding:2px 8px;"
                        @"border-radius:10px;opacity:.35;user-select:none;transition:opacity .15s;}"
+                       @"#mdv-ver::after{content:attr(data-label);}"
                        @"#mdv-ver:hover{opacity:.95;}</style>"];
 
     /* ---- libraries ---- */
@@ -409,7 +411,10 @@ static NSString *AssetMime(NSString *path) {
     [html appendString:head];
     [html appendString:@"</head><body><article class=\"markdown-body\" id=\"content\"></article>"];
     if (showVersion) {
-        [html appendFormat:@"<div id=\"mdv-ver\" title=\"Double Commander MarkdownView plugin\">MarkdownView v%s</div>", MDV_VERSION];
+        /* The label is generated content (::after), not DOM text, so the viewer's
+         * Find never lands on it and Select All / Copy never picks it up. */
+        [html appendFormat:@"<div id=\"mdv-ver\" title=\"Double Commander MarkdownView plugin\" "
+                           @"data-label=\"MarkdownView v%s\"></div>", MDV_VERSION];
     }
     [html appendFormat:@"<script id=\"md-data\" type=\"application/x-markdown-base64\">%@</script>", b64];
     [html appendFormat:@"<script>%@</script>", bootstrap];
@@ -425,6 +430,36 @@ static NSString *AssetMime(NSString *path) {
     NSURL *rootURL = [NSURL fileURLWithPath:@"/" isDirectory:YES];
     [self.web loadFileURL:fileURL allowingReadAccessToURL:rootURL];
     return YES;
+}
+
+/* Find `text` with WebKit's own find engine — the one Safari's Cmd+F uses — so
+ * matching follows the rendered text, not the Markdown source, and the hit is
+ * selected and scrolled into view. A fresh search (lcs_findfirst) drops the
+ * current selection first, so it starts from the top (or the bottom, searching
+ * backwards) instead of from the previous hit. Searches wrap at the ends. */
+- (void)findText:(NSString *)text flags:(int)flags {
+    WKWebView *web = self.web;
+    WKFindConfiguration *fc = [[WKFindConfiguration alloc] init];
+    fc.backwards     = (flags & lcs_backwards) != 0;
+    fc.caseSensitive = (flags & lcs_matchcase) != 0;
+    fc.wraps         = YES;
+
+    void (^find)(void) = ^{
+        [web findString:text withConfiguration:fc completionHandler:^(WKFindResult *r) {
+            /* DC ignores ListSearchText's result, so "not found" is reported
+             * here, the way its own text viewer does it. */
+            if (!r.matchFound) { NSBeep(); return; }
+            /* Focus the page so the hit shows in the active selection colour
+             * (not the faint inactive grey) and Find Next / Esc keep working. */
+            [web.window makeFirstResponder:web];
+        }];
+    };
+    if (flags & lcs_findfirst) {
+        [web evaluateJavaScript:@"window.getSelection().removeAllRanges()"
+              completionHandler:^(id _, NSError *e) { (void)_; (void)e; find(); }];
+    } else {
+        find();
+    }
 }
 
 - (void)dealloc {
@@ -536,6 +571,30 @@ int __stdcall ListSendCommand(HWND ListWin, int Command, int Parameter) {
     if ([NSThread isMainThread]) run();
     else dispatch_sync(dispatch_get_main_queue(), run);
     return rc;
+}
+
+/* Double Commander only enables Find / Find Next / Find Previous in the viewer
+ * when the plugin exports a search entry point (TWlxModule.CanSearch); without
+ * one the only way to search a rendered file was to switch to Text mode.
+ *
+ * Only the W variant is exported: DC prefers it, and UTF-16 is unambiguous,
+ * whereas the ANSI one arrives in whatever DC takes the system code page to be.
+ * The search itself is asynchronous (WebKit IPC), so the result means "search
+ * started"; DC ignores it anyway. A miss beeps, see -findText:flags:. */
+__attribute__((visibility("default")))
+int __stdcall ListSearchTextW(HWND ListWin, WCHAR *SearchString, int SearchParameter) {
+    if (!ListWin || !SearchString || !SearchString[0]) return LISTPLUGIN_ERROR;
+    MDView *view = (__bridge MDView *)ListWin;
+    if (![view isKindOfClass:[MDView class]]) return LISTPLUGIN_ERROR;
+
+    NSUInteger len = 0;
+    while (SearchString[len]) len++;
+    NSString *needle = [NSString stringWithCharacters:SearchString length:len];
+
+    void (^run)(void) = ^{ [view findText:needle flags:SearchParameter]; };
+    if ([NSThread isMainThread]) run();
+    else dispatch_sync(dispatch_get_main_queue(), run);
+    return LISTPLUGIN_OK;
 }
 
 __attribute__((visibility("default")))
