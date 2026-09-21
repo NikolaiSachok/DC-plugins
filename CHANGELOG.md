@@ -16,6 +16,13 @@ independently and tagged below.
   find engine: the hit is selected and scrolled into view, searches wrap, and the
   *Case sensitive* and *Backwards* options are honored. A miss beeps.
 
+### Fixed
+- **markdown-wlx:** PgUp/PgDn and the arrow keys did nothing in the F3 viewer
+  until the page was clicked. Double Commander's call to focus the plugin
+  (`TWlxModule.SetFocus`) is a no-op on macOS, so the page never had keyboard
+  focus. The plugin now takes focus itself when the viewer opens, but not in
+  Quick View, where the file panel keeps its keys.
+
 ### Changed
 - **markdown-wlx:** The version badge's label is now CSS generated content, not
   document text, so Find never lands on it.

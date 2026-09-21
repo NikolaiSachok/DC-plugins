@@ -178,6 +178,10 @@ Double Commander does. Build them with:
   on `test/search.md` with the flags DC's Find dialog passes (fresh search, Find
   Next, Find Previous, match case, non-ASCII) and asserts which text is selected,
   that the hit is scrolled into view, and that the version badge is never a hit.
+- `test/focus_verify.m` — keyboard focus on open: in a viewer-like host the web
+  view takes focus and real PgDn / Down-arrow events scroll the page; in a
+  Quick-View-like host the visible file list keeps its focus. Run it on
+  `test/search.md` (it needs a page long enough to scroll).
 - `test/esc_verify.m` — end-to-end regression for the Escape-key fix: focuses the
   web view, sends Escape, asserts it reaches the host (so the viewer closes).
 - `test/math_verify.m` — KaTeX delimiter regression: asserts all three pairs
