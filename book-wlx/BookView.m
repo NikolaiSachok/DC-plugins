@@ -36,7 +36,7 @@
 #include "listplug.h"
 #include "zipreader.h"
 
-#define BKV_VERSION "0.1.1"   /* single source of truth for the plugin version */
+#define BKV_VERSION "0.2.0"   /* single source of truth for the plugin version */
 
 /* Reserved first path segment for the reader's own assets. Checked before the
  * ZIP, so a book cannot shadow the reader's stylesheet or script. */
@@ -352,7 +352,14 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
 @property (nonatomic, assign) NSUInteger       loadCounter;
 /* Reading position per book: chapter index + fraction scrolled through it. */
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSDictionary *> *positionByPath;
+/* Search state, main thread only: searches waiting their turn, whether one is
+ * in flight, and the token of the load whose chapters are all in. */
+@property (nonatomic, strong) NSMutableArray<void (^)(void (^)(void))> *searchQueue;
+@property (nonatomic, assign) BOOL             searchRunning;
+@property (nonatomic, copy)   NSString        *readyToken;
 - (BOOL)loadBookAtPath:(NSString *)path;
+- (void)findText:(NSString *)text flags:(int)flags;
+- (void)bookReady:(NSString *)token;
 @end
 
 @implementation BKMessageSink
@@ -370,6 +377,8 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
         [[msg[@"k"] description] isEqualToString:v.currentToken ?: @""]) {
         v.positionByPath[v.currentPath] = @{ @"i": msg[@"i"] ?: @0,
                                              @"r": msg[@"r"] ?: @0 };
+    } else if ([type isEqualToString:@"ready"]) {
+        [v bookReady:[msg[@"k"] description]];
     } else if ([type isEqualToString:@"font"]) {
         long size = [msg[@"v"] integerValue];
         if (size >= 10 && size <= 40) gFontSizeOverride = size;
@@ -384,6 +393,7 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
     if (self) {
         self.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         _positionByPath = [NSMutableDictionary dictionary];
+        _searchQueue = [NSMutableArray array];
         _handler = [[BKSchemeHandler alloc] init];
         _sink = [[BKMessageSink alloc] init];
         _sink.owner = self;
@@ -466,12 +476,12 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
           @"<div id=\"bar-title\"><span id=\"book-title\"></span>"
           @"<span id=\"book-author\"></span></div>"
           @"<div id=\"bar-tools\">"
-            @"<button id=\"font-down\" type=\"button\" title=\"Smaller text (-)\">A&#8722;</button>"
-            @"<button id=\"font-up\" type=\"button\" title=\"Larger text (+)\">A+</button>"
+            @"<button id=\"font-down\" type=\"button\" title=\"Smaller text (-)\" data-label=\"A&#8722;\"></button>"
+            @"<button id=\"font-up\" type=\"button\" title=\"Larger text (+)\" data-label=\"A+\"></button>"
             @"<span id=\"percent\"></span>"
           @"</div>"
         @"</header>"
-        @"<nav id=\"toc\" aria-label=\"Table of contents\"><div id=\"toc-head\">Contents</div>"
+        @"<nav id=\"toc\" aria-label=\"Table of contents\"><div id=\"toc-head\" data-label=\"Contents\"></div>"
         @"<ol id=\"toc-list\"></ol></nav>"
         @"<div id=\"scrim\"></div>"
         @"<main id=\"book\"><div id=\"status\">Opening book…</div></main>"
@@ -483,7 +493,8 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
         jsCfg[@"reader"], jsCfg[@"reader"]];
 }
 
-- (NSString *)errorHTMLForFile:(NSString *)fileName reason:(NSString *)reason {
+- (NSString *)errorHTMLForFile:(NSString *)fileName reason:(NSString *)reason
+                          token:(NSString *)token {
     return [NSString stringWithFormat:
         @"<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>"
         @"html,body{margin:0;height:100%%;display:flex;align-items:center;"
@@ -495,8 +506,12 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
         @".f{opacity:.6;font-size:12px;margin-top:14px;word-break:break-all;}"
         @"</style></head><body><div class=\"box\">"
         @"<div class=\"t\">Can't open this book</div><div>%@</div>"
-        @"<div class=\"f\">%@</div></div></body></html>",
-        HTMLEscape(reason), HTMLEscape(fileName)];
+        @"<div class=\"f\">%@</div></div>"
+        /* Nothing to load here, so the page is ready as soon as it exists; this
+         * releases any search DC sends to it (see -runSearches). */
+        @"<script>try{webkit.messageHandlers.dcbook.postMessage({t:'ready',k:'%@'});}catch(e){}</script>"
+        @"</body></html>",
+        HTMLEscape(reason), HTMLEscape(fileName), token];
 }
 
 /* First entry that looks like a FictionBook document, for `.fbz` / zipped FB2.
@@ -540,6 +555,9 @@ static BOOL LooksLikeFB2(NSData *data) {
     NSString *fileName = [path lastPathComponent] ?: @"";
     self.handler.token = token;
     self.currentToken = token;
+    [self.searchQueue removeAllObjects];
+    self.searchRunning = NO;
+    self.readyToken = nil;
 
     NSString *format = nil;
     NSString *reason = nil;
@@ -585,12 +603,75 @@ static BOOL LooksLikeFB2(NSData *data) {
                          position:self.positionByPath[path]
                          fileName:fileName
                            format:format]
-        : [self errorHTMLForFile:fileName reason:reason];
+        : [self errorHTMLForFile:fileName reason:reason token:token];
 
     NSString *url = [NSString stringWithFormat:@"x-book://book/%@/%@/index.html",
                      token, READER_PREFIX];
     [self.web loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:url]]];
     return format != nil;
+}
+
+/* Find `text` with WebKit's own find engine — the one Safari's Cmd+F uses — so
+ * the hit is selected and scrolled into view. The toolbar, contents and badge
+ * never match: their text is CSS generated content (see setLabel in
+ * reader.js). A fresh search (lcs_findfirst) drops the current selection
+ * first, so it starts from the top (or the end, searching backwards) instead of
+ * from the previous hit. Searches wrap at the ends of the book. */
+- (void)findText:(NSString *)text flags:(int)flags {
+    WKWebView *web = self.web;
+    WKFindConfiguration *fc = [[WKFindConfiguration alloc] init];
+    fc.backwards     = (flags & lcs_backwards) != 0;
+    fc.caseSensitive = (flags & lcs_matchcase) != 0;
+    fc.wraps         = YES;
+
+    void (^find)(void (^)(void)) = ^(void (^done)(void)) {
+        [web findString:text withConfiguration:fc completionHandler:^(WKFindResult *r) {
+            /* DC ignores ListSearchText's result, so "not found" is reported
+             * here, the way its own text viewer does it. */
+            if (!r.matchFound) NSBeep();
+            /* Focus the page so the hit shows in the active selection colour
+             * and Find Next / Esc keep working. */
+            else [web.window makeFirstResponder:web];
+            done();
+        }];
+    };
+    [self.searchQueue addObject:^(void (^done)(void)) {
+        if (!(flags & lcs_findfirst)) { find(done); return; }
+        [web evaluateJavaScript:@"window.getSelection().removeAllRanges()"
+              completionHandler:^(id _, NSError *e) { (void)_; (void)e; find(done); }];
+    }];
+    [self runSearches];
+}
+
+/* Searches run one at a time, in order — a Find Next pressed while a search is
+ * still in flight must not overtake it — and only once the current book has
+ * reported that every chapter is in (see bookReady). Loading another book
+ * drops whatever was queued for the previous one; the generation check makes
+ * a completion arriving from a search against that book a no-op. */
+- (void)runSearches {
+    if (self.searchRunning || !self.searchQueue.count) return;
+    if (![self.readyToken isEqualToString:self.currentToken ?: @""]) return;
+
+    void (^job)(void (^)(void)) = self.searchQueue.firstObject;
+    [self.searchQueue removeObjectAtIndex:0];
+    self.searchRunning = YES;
+    NSUInteger generation = self.loadCounter;
+    __weak BKView *weakSelf = self;
+    job(^{
+        BKView *me = weakSelf;
+        if (!me || me.loadCounter != generation) return;
+        me.searchRunning = NO;
+        [me runSearches];
+    });
+}
+
+/* The reader of the book loaded under `token` has every chapter in the
+ * document. Messages carry their load's token, so a late one from the book
+ * being replaced is ignored. */
+- (void)bookReady:(NSString *)token {
+    if (![token isEqualToString:self.currentToken ?: @""]) return;
+    self.readyToken = token;
+    [self runSearches];
 }
 
 - (void)dealloc {
@@ -713,6 +794,30 @@ int __stdcall ListSendCommand(HWND ListWin, int Command, int Parameter) {
     if ([NSThread isMainThread]) run();
     else dispatch_sync(dispatch_get_main_queue(), run);
     return rc;
+}
+
+/* Double Commander only enables Find / Find Next / Find Previous in the viewer
+ * when the plugin exports a search entry point (TWlxModule.CanSearch); without
+ * one an open book could not be searched at all.
+ *
+ * Only the W variant is exported: DC prefers it, and UTF-16 is unambiguous,
+ * whereas the ANSI one arrives in whatever DC takes the system code page to be.
+ * The search itself is asynchronous (WebKit IPC), so the result means "search
+ * started"; DC ignores it anyway. A miss beeps, see -findText:flags:. */
+__attribute__((visibility("default")))
+int __stdcall ListSearchTextW(HWND ListWin, WCHAR *SearchString, int SearchParameter) {
+    if (!ListWin || !SearchString || !SearchString[0]) return LISTPLUGIN_ERROR;
+    BKView *view = (__bridge BKView *)ListWin;
+    if (![view isKindOfClass:[BKView class]]) return LISTPLUGIN_ERROR;
+
+    NSUInteger len = 0;
+    while (SearchString[len]) len++;
+    NSString *needle = [NSString stringWithCharacters:SearchString length:len];
+
+    void (^run)(void) = ^{ [view findText:needle flags:SearchParameter]; };
+    if ([NSThread isMainThread]) run();
+    else dispatch_sync(dispatch_get_main_queue(), run);
+    return LISTPLUGIN_OK;
 }
 
 __attribute__((visibility("default")))

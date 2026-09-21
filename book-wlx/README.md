@@ -70,6 +70,7 @@ move the entry above `MacPreview`.
 | Follow a footnote | click the marker; it jumps to the note |
 | Larger / smaller text | `A+` / `A-`, or **+** / **-** |
 | Scroll | trackpad, arrows, Page Up/Down, Home/End |
+| Search the book | **Cmd+F** / **F7**, then **F3** / **Cmd+G** (next), **Shift+F3** (previous) |
 | Close the viewer | **Esc** |
 | Read it as raw text instead | the viewer's own mode switch |
 
@@ -167,6 +168,23 @@ Escape event so LCL sees it and closes the viewer. This has to be verified in th
 real Double Commander; a mock host will pass either way. See
 [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md).
 
+### Searching
+
+The viewer's own Find searches the whole book, not only the part on screen: the
+hit is selected and scrolled into view, searches cross chapters and wrap, and the
+dialog's *Case sensitive* and *Backwards* options are honored. A miss beeps.
+The plugin exports `ListSearchTextW` and runs WebKit's own find engine. Two
+things make that work in a reader:
+
+- **Chapters arrive one at a time.** WebKit only finds text that is already in
+  the document, so a search waits until the reader reports that every chapter is
+  in (a `ready` message carrying the load's token). A Find issued the moment a
+  long book opens still reaches its last page, and one issued against a book
+  that has just been replaced is dropped.
+- **The chrome is not text.** The title bar, contents sidebar, progress readout
+  and version badge draw their labels as CSS generated content (`data-label`),
+  so a search for a chapter title lands on the chapter, not on the sidebar.
+
 ## Updating the bundled library
 
 ```sh
@@ -206,6 +224,10 @@ clang -fobjc-arc -framework Cocoa -framework WebKit -o build/esc_verify test/esc
 clang -fobjc-arc -framework Cocoa -framework WebKit -o build/copy_verify test/copy_verify.m
 ./build/copy_verify build/BookView.wlx build/samples/sample2.epub
 
+# Find works on the rendered book
+clang -fobjc-arc -framework Cocoa -framework WebKit -o build/search_verify test/search_verify.m
+./build/search_verify build/BookView.wlx build/samples
+
 # Visual check: render a book and save a PNG
 clang -fobjc-arc -framework Cocoa -framework WebKit -o build/snap_host test/snap_host.m
 ./build/snap_host build/BookView.wlx build/samples/sample3.epub build/shot.png 0 1100 860
@@ -225,6 +247,14 @@ DC's viewer does, and asserts the system clipboard really changed — Double Com
 handles those two keys itself and dispatches them through the ABI, so a plugin that
 does not export the entry point leaves both silently dead. The harness saves and
 restores a text clipboard.
+
+`search_verify.m` drives `ListSearchTextW` with the flags DC's Find dialog passes
+and asserts which text ends up selected: a search issued the instant a book opens
+still finds its last chapter, the title bar, contents sidebar and version badge
+are never a hit, a hit lands below the fixed title bar, searches cross chapters
+and wrap in both directions, a quick Find Previous cannot overtake the search it
+follows, a book reloaded with `ListLoadNext` is searched afresh, and the error
+page for a file that is not a book answers a search instead of hanging it.
 
 `esc_verify.m` checks that Escape is re-posted to the host so the viewer closes.
 It is a regression net, not proof — Double Commander is a Lazarus/LCL app and a
