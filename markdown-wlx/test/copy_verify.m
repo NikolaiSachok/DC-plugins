@@ -28,10 +28,6 @@ typedef int  (*ListSendCommand_t)(HWND, int, int);
 
 /* Text that must be on screen before copying means anything. */
 #define MARKER      @"smoke test"
-/* Page chrome that must never reach the clipboard: the version badge is outside
- * the content element and carries user-select:none, which a programmatic
- * -[WKWebView selectAll:] would ignore. */
-#define CHROME      @"MarkdownView v"
 #define CONTENT_ID  "content"
 
 static int gFailures = 0;
@@ -132,6 +128,14 @@ int main(int argc, char **argv) { @autoreleasepool {
                          @"');return !!c&&c.children.length>0;})()";
     NSString *hasSelection = @"(function(){var s=window.getSelection();"
                              @"return !!s&&s.toString().trim().length>0;})()";
+    /* Select All must stay inside the content element. Checked on the range, not
+     * on copied text: the version badge's label is CSS generated content, so a
+     * whole-document -[WKWebView selectAll:] would no longer put page chrome on
+     * the clipboard for a text check to catch. */
+    NSString *insideContent = @"(function(){var s=window.getSelection();"
+                              @"var c=document.getElementById('" @CONTENT_ID @"');"
+                              @"return !!c&&!!s&&s.rangeCount>0&&"
+                              @"c.contains(s.getRangeAt(0).commonAncestorContainer);})()";
     /* Stand in for a mouse drag: select one element inside the content. */
     NSString *selectOne = @"(function(){var c=document.getElementById('" @CONTENT_ID @"');"
                           @"var p=c&&c.querySelector('p');if(!p)return false;"
@@ -154,23 +158,25 @@ int main(int argc, char **argv) { @autoreleasepool {
               "lc_selectall returns LISTPLUGIN_OK");
         PollJS(web, hasSelection, 40, ^(BOOL selected) {
             check(selected, "lc_selectall actually selects the document");
-            copyThen(^(NSString *all) {
-                check(![all isEqualToString:@"SENTINEL_NOT_COPIED"], "clipboard actually changed");
-                check([all containsString:MARKER], "clipboard holds the rendered document text");
-                check(![all containsString:CHROME], "page chrome is NOT copied");
-                if (gFailures) printf("  clipboard was: %.200s\n", all.UTF8String);
+            PollJS(web, insideContent, 1, ^(BOOL inside) {
+                check(inside, "lc_selectall stays inside the content (no chrome)");
+                copyThen(^(NSString *all) {
+                    check(![all isEqualToString:@"SENTINEL_NOT_COPIED"], "clipboard actually changed");
+                    check([all containsString:MARKER], "clipboard holds the rendered document text");
+                    if (gFailures) printf("  clipboard was: %.200s\n", all.UTF8String);
 
-                /* Flow 2 — the bug as reported in #25: select with the mouse,
-                 * then press Cmd+C on its own, with no preceding Select All. */
-                PollJS(web, selectOne, 20, ^(BOOL one) {
-                    check(one, "a selection can be made without lc_selectall");
-                    copyThen(^(NSString *part) {
-                        check(part.length > 0 && ![part isEqualToString:@"SENTINEL_NOT_COPIED"],
-                              "Cmd+C alone copies an existing selection");
-                        check(part.length < all.length,
-                              "it copies only the selection, not the document");
-                        if (gFailures) printf("  partial was: %.200s\n", part.UTF8String);
-                        finish();
+                    /* Flow 2 — the bug as reported in #25: select with the mouse,
+                     * then press Cmd+C on its own, with no preceding Select All. */
+                    PollJS(web, selectOne, 20, ^(BOOL one) {
+                        check(one, "a selection can be made without lc_selectall");
+                        copyThen(^(NSString *part) {
+                            check(part.length > 0 && ![part isEqualToString:@"SENTINEL_NOT_COPIED"],
+                                  "Cmd+C alone copies an existing selection");
+                            check(part.length < all.length,
+                                  "it copies only the selection, not the document");
+                            if (gFailures) printf("  partial was: %.200s\n", part.UTF8String);
+                            finish();
+                        });
                     });
                 });
             });

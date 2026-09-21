@@ -436,7 +436,11 @@ static NSString *AssetMime(NSString *path) {
  * matching follows the rendered text, not the Markdown source, and the hit is
  * selected and scrolled into view. A fresh search (lcs_findfirst) drops the
  * current selection first, so it starts from the top (or the bottom, searching
- * backwards) instead of from the previous hit. Searches wrap at the ends. */
+ * backwards) instead of from the previous hit. Searches wrap at the ends.
+ *
+ * Every search takes the same hop through the page, even when there is no
+ * selection to drop: the hops complete in the order they were sent, so a quick
+ * Find Next straight after a fresh search cannot overtake it. */
 - (void)findText:(NSString *)text flags:(int)flags {
     WKWebView *web = self.web;
     WKFindConfiguration *fc = [[WKFindConfiguration alloc] init];
@@ -444,7 +448,9 @@ static NSString *AssetMime(NSString *path) {
     fc.caseSensitive = (flags & lcs_matchcase) != 0;
     fc.wraps         = YES;
 
-    void (^find)(void) = ^{
+    NSString *prepare = (flags & lcs_findfirst) ? @"window.getSelection().removeAllRanges()" : @"0";
+    [web evaluateJavaScript:prepare completionHandler:^(id _, NSError *e) {
+        (void)_; (void)e;
         [web findString:text withConfiguration:fc completionHandler:^(WKFindResult *r) {
             /* DC ignores ListSearchText's result, so "not found" is reported
              * here, the way its own text viewer does it. */
@@ -453,13 +459,7 @@ static NSString *AssetMime(NSString *path) {
              * (not the faint inactive grey) and Find Next / Esc keep working. */
             [web.window makeFirstResponder:web];
         }];
-    };
-    if (flags & lcs_findfirst) {
-        [web evaluateJavaScript:@"window.getSelection().removeAllRanges()"
-              completionHandler:^(id _, NSError *e) { (void)_; (void)e; find(); }];
-    } else {
-        find();
-    }
+    }];
 }
 
 - (void)dealloc {

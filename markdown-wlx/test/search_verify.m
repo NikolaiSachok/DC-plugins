@@ -63,8 +63,10 @@ static NSString *const kSelectionJS =
      @"y:Math.round(window.scrollY)});})()";
 
 typedef struct { const char *what; const char *needle; int flags;
-                 const char *text; const char *block; int scrolled; } Step;
-/* scrolled: 1 = must be scrolled down, 0 = must be at the top, -1 = don't care. */
+                 const char *text; const char *block; int scrolled; int then; } Step;
+/* scrolled: 1 = must be scrolled down, 0 = must be at the top, -1 = don't care.
+ * then: flags for a second search issued straight after the first, without
+ * waiting (-1 = none) — Find Previous pressed while the fresh search is in flight. */
 
 int main(int argc, char **argv) { @autoreleasepool {
     if (argc < 3) { fprintf(stderr, "usage: search_verify <plugin.wlx> <search.md>\n"); return 2; }
@@ -95,20 +97,21 @@ int main(int argc, char **argv) { @autoreleasepool {
     if (!web) { fprintf(stderr, "no WKWebView in the plugin view\n"); return 2; }
 
     static const Step steps[] = {
-        { "Find: first hit from the top",          "needle", lcs_findfirst, "needle", "The first",  0 },
-        { "Find Next: second hit, scrolled to it", "needle", 0,             "needle", "The second", 1 },
-        { "Find Next: wraps back to the first",    "needle", 0,             "needle", "The first",  0 },
-        { "Find Previous: wraps to the last",      "needle", lcs_backwards, "needle", "The second", 1 },
+        { "Find: first hit from the top",          "needle", lcs_findfirst, "needle", "The first",  0, -1 },
+        { "Find Next: second hit, scrolled to it", "needle", 0,             "needle", "The second", 1, -1 },
+        { "Find Next: wraps back to the first",    "needle", 0,             "needle", "The first",  0, -1 },
+        { "Find Previous: wraps to the last",      "needle", lcs_backwards, "needle", "The second", 1, -1 },
         { "Find backwards from scratch: last hit", "needle", lcs_findfirst | lcs_backwards,
-                                                                            "needle", "The second", 1 },
-        { "Case-insensitive by default",           "HAYSTACK", lcs_findfirst, "Haystack", "Case matters", -1 },
+                                                                            "needle", "The second", 1, -1 },
+        { "Case-insensitive by default",           "HAYSTACK", lcs_findfirst, "Haystack", "Case matters", -1, -1 },
         { "Match case skips the other spelling",   "haystack", lcs_findfirst | lcs_matchcase,
-                                                                            "haystack", "Case matters", -1 },
+                                                                            "haystack", "Case matters", -1, -1 },
         { "Match case with no hit selects nothing","HAYSTACK", lcs_findfirst | lcs_matchcase,
-                                                                            "",         "",             -1 },
-        { "Non-ASCII needle (UTF-16 in)",          "grüße", lcs_findfirst,  "Grüße",  "Non-ASCII",  -1 },
+                                                                            "",         "",             -1, -1 },
+        { "Non-ASCII needle (UTF-16 in)",          "grüße", lcs_findfirst,  "Grüße",  "Non-ASCII",  -1, -1 },
+        { "Fresh search then an instant Find Prev", "needle", lcs_findfirst, "needle", "The second", 1, lcs_backwards },
         /* The version badge is page chrome, not the document. */
-        { "Version badge is not a hit",            "MarkdownView v", lcs_findfirst, "", "",        -1 },
+        { "Version badge is not a hit",            "MarkdownView v", lcs_findfirst, "", "",        -1, -1 },
     };
     const int nSteps = (int)(sizeof steps / sizeof steps[0]);
 
@@ -131,6 +134,7 @@ int main(int argc, char **argv) { @autoreleasepool {
         WCHAR *buf = calloc(n + 1, sizeof(WCHAR));
         [needle getCharacters:buf range:NSMakeRange(0, n)];
         int rc = Search(pw, buf, st.flags);
+        if (rc == LISTPLUGIN_OK && st.then >= 0) rc = Search(pw, buf, st.then);
         free(buf);
         if (rc != LISTPLUGIN_OK) { check(NO, st.what); next(i + 1); return; }
 
