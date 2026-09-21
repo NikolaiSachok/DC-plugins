@@ -354,7 +354,7 @@ static BOOL CfgBool(NSDictionary *cfg, NSString *key) {
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSDictionary *> *positionByPath;
 /* Search state, main thread only: searches waiting their turn, whether one is
  * in flight, and the token of the load whose chapters are all in. */
-@property (nonatomic, strong) NSMutableArray<void (^)(void (^)(void))> *searchQueue;
+@property (nonatomic, strong) NSMutableArray<void (^)(BOOL (^)(void), void (^)(void))> *searchQueue;
 @property (nonatomic, assign) BOOL             searchRunning;
 @property (nonatomic, copy)   NSString        *readyToken;
 - (BOOL)loadBookAtPath:(NSString *)path;
@@ -624,8 +624,13 @@ static BOOL LooksLikeFB2(NSData *data) {
     fc.caseSensitive = (flags & lcs_matchcase) != 0;
     fc.wraps         = YES;
 
-    void (^find)(void (^)(void)) = ^(void (^done)(void)) {
+    /* `current` turns false once another book is loaded: every step checks it,
+     * so a search in flight across ListLoadNext neither runs against the new
+     * book before it is ready nor beeps or grabs focus for the old one. */
+    void (^find)(BOOL (^)(void), void (^)(void)) = ^(BOOL (^current)(void), void (^done)(void)) {
+        if (!current()) return;
         [web findString:text withConfiguration:fc completionHandler:^(WKFindResult *r) {
+            if (!current()) return;
             /* DC ignores ListSearchText's result, so "not found" is reported
              * here, the way its own text viewer does it. */
             if (!r.matchFound) NSBeep();
@@ -635,10 +640,10 @@ static BOOL LooksLikeFB2(NSData *data) {
             done();
         }];
     };
-    [self.searchQueue addObject:^(void (^done)(void)) {
-        if (!(flags & lcs_findfirst)) { find(done); return; }
+    [self.searchQueue addObject:^(BOOL (^current)(void), void (^done)(void)) {
+        if (!(flags & lcs_findfirst)) { find(current, done); return; }
         [web evaluateJavaScript:@"window.getSelection().removeAllRanges()"
-              completionHandler:^(id _, NSError *e) { (void)_; (void)e; find(done); }];
+              completionHandler:^(id _, NSError *e) { (void)_; (void)e; find(current, done); }];
     }];
     [self runSearches];
 }
@@ -652,14 +657,18 @@ static BOOL LooksLikeFB2(NSData *data) {
     if (self.searchRunning || !self.searchQueue.count) return;
     if (![self.readyToken isEqualToString:self.currentToken ?: @""]) return;
 
-    void (^job)(void (^)(void)) = self.searchQueue.firstObject;
+    void (^job)(BOOL (^)(void), void (^)(void)) = self.searchQueue.firstObject;
     [self.searchQueue removeObjectAtIndex:0];
     self.searchRunning = YES;
     NSUInteger generation = self.loadCounter;
     __weak BKView *weakSelf = self;
-    job(^{
+    BOOL (^current)(void) = ^BOOL {
         BKView *me = weakSelf;
-        if (!me || me.loadCounter != generation) return;
+        return me && me.loadCounter == generation;
+    };
+    job(current, ^{
+        if (!current()) return;
+        BKView *me = weakSelf;
         me.searchRunning = NO;
         [me runSearches];
     });

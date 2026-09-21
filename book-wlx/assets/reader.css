@@ -108,7 +108,9 @@ html, body {
  * a book's own data-label values as text the book never showed. */
 #bar [data-label]::before, #toc [data-label]::before,
 #version[data-label]::before { content: attr(data-label); }
-#book-author:not([data-label=""])::before { content: "· " attr(data-label); }
+/* [data-label] as well: until the reader sets it (a book still opening, or one
+ * that failed to) there is no author to separate from the title. */
+#book-author[data-label]:not([data-label=""])::before { content: "· " attr(data-label); }
 
 #bar-tools { display: flex; align-items: center; gap: 2px; flex: none; }
 #font-down, #font-up { font-size: 13px; min-width: 26px; }

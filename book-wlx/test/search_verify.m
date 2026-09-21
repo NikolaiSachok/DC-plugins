@@ -70,6 +70,7 @@ typedef struct {
     const char *what;
     const char *load;    /* book to ListLoadNext before searching (relative to the
                           * samples dir, or absolute), or NULL */
+    const char *stale;   /* fresh search issued just BEFORE that load, or NULL */
     const char *needle;
     int flags;
     int then;            /* flags for a second search issued straight after the
@@ -129,40 +130,46 @@ int main(int argc, char **argv) { @autoreleasepool {
     /* sample3.epub is "The Wandering Lamp" by Marguerite Vance: three chapters,
      * The Harbour / The Ledger / The Lamp, listed in the contents sidebar. */
     static const Step steps[] = {
-        { "Searched on open: hit in the last chapter", NULL, "wandered", lcs_findfirst, -1,
+        { "Searched on open: hit in the last chapter", NULL, NULL, "wandered", lcs_findfirst, -1,
           "wandered", "The lamp had wandered" },
-        { "Title bar is not a hit (book title)",       NULL, "Wandering", lcs_findfirst | lcs_matchcase, -1,
+        { "Title bar is not a hit (book title)",       NULL, NULL, "Wandering", lcs_findfirst | lcs_matchcase, -1,
           "Wandering", "colophon" },
-        { "Title bar is not a hit (author)",           NULL, "Vance", lcs_findfirst, -1,
+        { "Title bar is not a hit (author)",           NULL, NULL, "Vance", lcs_findfirst, -1,
           "Vance", "colophon" },
-        { "Contents sidebar is not a hit",             NULL, "Ledger", lcs_findfirst | lcs_matchcase, -1,
+        { "Contents sidebar is not a hit",             NULL, NULL, "Ledger", lcs_findfirst | lcs_matchcase, -1,
           "Ledger", "c2" /* the chapter heading */ },
-        { "Match case skips the other spelling",       NULL, "ledger", lcs_findfirst | lcs_matchcase, -1,
+        { "Match case skips the other spelling",       NULL, NULL, "ledger", lcs_findfirst | lcs_matchcase, -1,
           "ledger", "Every page of the ledger" },
-        { "Case-insensitive fresh search",             NULL, "LAMP", lcs_findfirst, -1,
+        { "Case-insensitive fresh search",             NULL, NULL, "LAMP", lcs_findfirst, -1,
           "lamp", "one lamp, wandering" },
-        { "Find Next: across into the next chapter",   NULL, "lamp", 0, -1,
+        { "Find Next: across into the next chapter",   NULL, NULL, "lamp", 0, -1,
           "Lamp", "c3" },
-        { "Find Next: next hit in the chapter",        NULL, "lamp", 0, -1,
+        { "Find Next: next hit in the chapter",        NULL, NULL, "lamp", 0, -1,
           "lamp", "The lamp had wandered" },
-        { "Find Next: on into the colophon",           NULL, "lamp", 0, -1,
+        { "Find Next: on into the colophon",           NULL, NULL, "lamp", 0, -1,
           "Lamp", "colophon" },
-        { "Find Next: wraps to the first hit",         NULL, "lamp", 0, -1,
+        { "Find Next: wraps to the first hit",         NULL, NULL, "lamp", 0, -1,
           "lamp", "one lamp, wandering" },
-        { "Find Previous: wraps back to the last",     NULL, "lamp", lcs_backwards, -1,
+        { "Find Previous: wraps back to the last",     NULL, NULL, "lamp", lcs_backwards, -1,
           "Lamp", "colophon" },
-        { "Fresh search then an instant Find Prev",    NULL, "lamp", lcs_findfirst, lcs_backwards,
+        { "Fresh search then an instant Find Prev",    NULL, NULL, "lamp", lcs_findfirst, lcs_backwards,
           "Lamp", "colophon" },
-        { "Version badge is not a hit",                NULL, "BookView v", lcs_findfirst, -1, "", "" },
-        { "Toolbar buttons are not a hit",             NULL, "A+", lcs_findfirst, -1, "", "" },
-        { "After ListLoadNext: the new book, UTF-16",  "sample.fb2", "дёготь", lcs_findfirst, -1,
+        { "Version badge is not a hit",                NULL, NULL, "BookView v", lcs_findfirst, -1, "", "" },
+        { "Toolbar buttons are not a hit",             NULL, NULL, "A+", lcs_findfirst, -1, "", "" },
+        { "After ListLoadNext: the new book, UTF-16",  "sample.fb2", NULL, "дёготь", lcs_findfirst, -1,
           "дёготь", "Соль, дёготь" },
+        /* A fresh search still in flight when the next book loads must not
+         * disturb the search that follows. (Its own stale run is only visible
+         * as a false beep, which this harness cannot observe; the guard for it
+         * is the generation check in -findText:flags:.) */
+        { "A search in flight across ListLoadNext",   "sample3.epub", "дёготь", "wandered", lcs_findfirst, -1,
+          "wandered", "The lamp had wandered" },
         /* Not a book: the plugin shows why it can't open it. A search there
          * must run against that page rather than wait for chapters forever... */
-        { "Error page is searched, not waited on",     "@notabook", "open", lcs_findfirst, -1,
+        { "Error page is searched, not waited on",     "@notabook", NULL, "open", lcs_findfirst, -1,
           "open", "Can't open this book" },
         /* ...and must not leave later searches stuck behind it. */
-        { "Searching works again after the error page", "sample3.epub", "wandered", lcs_findfirst, -1,
+        { "Searching works again after the error page", "sample3.epub", NULL, "wandered", lcs_findfirst, -1,
           "wandered", "The lamp had wandered" },
     };
     const int nSteps = (int)(sizeof steps / sizeof steps[0]);
@@ -182,6 +189,7 @@ int main(int argc, char **argv) { @autoreleasepool {
     void (^runStep)(int) = ^(int i) {
         if (i >= nSteps) { finish(); return; }
         Step st = steps[i];
+        if (st.stale) SearchFor(Search, pw, st.stale, lcs_findfirst);
         if (st.load) {
             BOOL bad = !strcmp(st.load, "@notabook");
             NSString *p = bad ? notABook

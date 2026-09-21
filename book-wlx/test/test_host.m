@@ -127,6 +127,13 @@ int main(int argc, char **argv) {
                   isEqualToString:@"The Wandering Lamp"], @"title comes from the OPF metadata");
         check([str(runJS(web, @"document.getElementById('book-author').dataset.label"))
                   isEqualToString:@"Marguerite Vance"], @"author comes from the OPF metadata");
+        /* While a book is still opening the author has no label yet: no stray
+         * separator after the title. */
+        check([runJS(web, @"(function(){var a=document.getElementById('book-author');"
+                          @"var v=a.getAttribute('data-label');a.removeAttribute('data-label');"
+                          @"var c=getComputedStyle(a,'::before').content;"
+                          @"a.setAttribute('data-label',v);return c==='none';})()") boolValue],
+              @"no author separator before the author is known");
         check([runJS(web, @"document.querySelectorAll('#toc-list a').length") intValue] == 4,
               @"nav document yields 4 TOC entries");
         check([runJS(web, @"document.querySelectorAll('#toc-list li[data-depth=\"1\"]').length") intValue] == 1,
