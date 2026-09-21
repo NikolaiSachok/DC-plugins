@@ -127,10 +127,14 @@ symptom is *silent*: text selects, Cmd+C copies nothing, no error anywhere.
 DC's `TWlxModule.SetFocus` is a **no-op on macOS** (Windows/Qt/GTK branches only),
 so a viewer plugin opened with F3 has no keyboard focus: PgUp/PgDn and the arrows
 do nothing until the page is clicked. Take focus in `-viewDidMoveToWindow` and on
-`NSWindowDidBecomeKeyNotification`, but **only when nobody visibly holds it**
-(focus on the window, on one of your own container views, or on a hidden
-control). In Quick View (Ctrl+Q) the visible file list holds focus and must keep
-it. Copy the implementation from `markdown-wlx/MarkdownView.m` or
+`NSWindowDidBecomeKeyNotification`, but **only when no control holds it**. In
+the F3 viewer DC leaves focus on the bare form: LCL's window content is a scroll
+view, and its document view (`TCocoaWindowContentDocument`) is first responder,
+with the plugin view added beside it, not inside it. So an "is focus on one of my
+ancestors?" test is not enough (that was the first fix, and it failed in DC). In
+Quick View (Ctrl+Q) a file-panel control nested deep in the main window holds
+focus and must keep it. Diagnose host focus from a file log inside DC: `NSLog`
+from DC's process shows up as `<private>` in `log show`. Copy the implementation from `markdown-wlx/MarkdownView.m` or
 `book-wlx/BookView.m` (it is the same in both), and ship `test/focus_verify.m`.
 
 ### Find goes through `ListSearchTextW`, and must not hit the chrome

@@ -682,12 +682,15 @@ static BOOL LooksLikeFB2(NSData *data) {
  * the arrows went nowhere until the page was clicked. The plugin takes focus
  * itself instead.
  *
- * Only when nobody else visibly holds it, though. The same plugin also runs in
- * Quick View (Ctrl+Q), next to the file panel, where DC deliberately does not
- * focus it — taking focus there would steal the panel's cursor keys. In the
- * viewer, focus sits on the window, on one of our own container views, or on a
- * control hidden behind the plugin (the text viewer); in Quick View it sits on
- * the visible file list, which is none of those. */
+ * Only when no control holds it, though. The same plugin also runs in Quick
+ * View (Ctrl+Q), next to the file panel, where DC deliberately does not focus
+ * it — taking focus there would steal the panel's cursor keys. In the viewer,
+ * focus sits on the bare form: LCL's window content is a scroll view, and its
+ * document view (TCocoaWindowContentDocument) is first responder, with the
+ * plugin added beside it. In Quick View it sits on the file list, a control
+ * nested deep in the main window. So focus is taken from the window, its
+ * content view or that document view, from our own containers, and from a
+ * hidden control — never from a visible one. */
 - (BOOL)focusIsUnclaimed {
     NSWindow *win = self.window;
     NSResponder *fr = win.firstResponder;
@@ -695,6 +698,12 @@ static BOOL LooksLikeFB2(NSData *data) {
     if (![fr isKindOfClass:[NSView class]]) return NO;
     NSView *v = (NSView *)fr;
     if (v == self.web || [v isDescendantOf:self.web]) return NO; /* already ours */
+    /* The bare form: the content view itself, or the document view its clip
+     * view scrolls. */
+    NSView *content = win.contentView;
+    if (v == content) return YES;
+    if ([v.superview isKindOfClass:[NSClipView class]] && v.superview.superview == content)
+        return YES;
     return [self isDescendantOf:v] || v.isHiddenOrHasHiddenAncestor;
 }
 
