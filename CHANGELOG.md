@@ -6,6 +6,17 @@ independently and tagged below.
 
 ## [Unreleased]
 
+## markdown-wlx 0.5.1 — 2026-10-22
+
+### Added
+- **markdown-wlx:** Add a centered **Page N of M** footer to each printed
+  page and saved PDF, with space reserved below the document content.
+- **markdown-wlx:** Print the rendered Markdown document from Double
+  Commander's viewer using the native macOS print dialog, including Save as PDF.
+  The plugin exports `ListPrintW`, honors the viewer's print margins, and waits
+  for diagrams, fonts, and images before opening the sheet. A light print layout
+  hides the version badge, wraps long code lines, and paginates the full document.
+
 ## book-wlx 0.2.0 — 2026-09-21
 
 ### Added
