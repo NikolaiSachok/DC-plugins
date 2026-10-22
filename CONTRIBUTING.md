@@ -9,6 +9,12 @@ plugins over feature sprawl.
 - Xcode command-line tools: `xcode-select --install`
 - Double Commander (for live testing)
 
+## Working with Claude or Codex
+
+Both agents share the repository charter in [AGENTS.md](AGENTS.md).
+`CLAUDE.md` is a relative symlink to that file; update `AGENTS.md` to keep both
+agents' instructions in sync. Enable the pre-commit hook below once per clone.
+
 ## Build / test loop (per plugin)
 
 Each plugin is self-contained in its own directory with a `build.sh`:
@@ -42,8 +48,9 @@ git config core.hooksPath .githooks
 ```
 
 It's fast and blocking; bypass in an emergency with `git commit --no-verify`.
-Semantic code review (`/code-review`) is **not** part of this hook — run it at
-push / PR / release boundaries, on the accumulated diff.
+Independent semantic review is **not** part of this hook — run it at
+push / PR / release boundaries, on the accumulated diff. Use `/code-review` when
+available, or request a review from a fresh agent.
 
 ## Plugin layout convention
 
