@@ -57,6 +57,18 @@ EXT="MD"|EXT="MARKDOWN"|EXT="MDOWN"|EXT="MKD"|EXT="MKDN"|EXT="MDWN"|EXT="MDTXT"|
 
 Select a `.md` file and press **F3** (internal viewer). It opens rendered.
 
+### Printing
+
+Choose **File → Print** in the viewer to open the macOS print dialog. Print the
+whole rendered document to a printer, or choose **Save as PDF** from the dialog's
+PDF menu. The document uses a light paper layout regardless of the screen theme;
+the version badge is hidden, long code lines wrap, and table headers repeat.
+Every page has a centered **Page N of M** footer, including in saved PDFs.
+Diagrams, math, and local images finish loading before the dialog opens. If a
+resource does not finish loading within 20 seconds, the request beeps and cancels;
+you can retry. Navigating to another file or closing the viewer cancels a queued
+request. Margins come from Double Commander's **Print Setup**.
+
 ### Searching
 
 The viewer's own **Find** (**F7** / **Cmd+F**), **Find Next** (**F3**) and
@@ -178,6 +190,15 @@ Double Commander does. Build them with:
   on `test/search.md` with the flags DC's Find dialog passes (fresh search, Find
   Next, Find Previous, match case, non-ASCII) and asserts which text is selected,
   that the hit is scrolled into view, and that the version badge is never a hit.
+- `test/print_verify.m` — drives `ListPrintW` on the real artifact, redirects only
+  sheet presentation to a real WebKit/AppKit PDF save, and checks pagination,
+  first/last content, long code, hidden badge, Unicode titles, margins, queued
+  requests, cancellation, navigation, and close. It also checks each page's
+  footer text and position, including numbering when printing a page range.
+  Build with the command above
+  plus `-framework PDFKit`, then run `build/print_verify build/MarkdownView.wlx
+  build/print-test`. Inspect `build/print-test/print-1.pdf` visually; also verify
+  File → Print, Save as PDF, and Cancel in real Double Commander.
 - `test/focus_verify.m` — keyboard focus on open: in a viewer-like host the web
   view takes focus and real PgDn / Down-arrow events scroll the page; in a
   Quick-View-like host the visible file list keeps its focus. Run it on

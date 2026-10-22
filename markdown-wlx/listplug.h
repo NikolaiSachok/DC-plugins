@@ -13,6 +13,12 @@
 typedef void *HWND;
 typedef uint16_t WCHAR; /* FPC's WideChar: UTF-16 code unit */
 
+/* WLX uses four signed 32-bit integers, not macOS's CGFloat-based NSRect.
+ * Margins are distances in tenths of a millimetre. */
+typedef struct {
+    int32_t left, top, right, bottom;
+} ListPrintMargins;
+
 /* ListLoad / ListLoadNext return codes */
 #define LISTPLUGIN_OK    0
 #define LISTPLUGIN_ERROR 1

@@ -14,7 +14,7 @@
 #include <dlfcn.h>
 #include "listplug.h"
 
-#define MDV_VERSION "0.4.0"   /* single source of truth for the plugin version */
+#define MDV_VERSION "0.5.1"   /* single source of truth for the plugin version */
 
 #pragma mark - Helpers
 
@@ -237,6 +237,44 @@ static NSString *AssetMime(NSString *path) {
 
 #pragma mark - MDView
 
+/* WKWebView's public print API has no footer customization. These optional
+ * WebKit UI-delegate callbacks reserve footer space during pagination and draw
+ * in both preview and final output. They are internal WebKit API (present since
+ * before macOS 11); keep the real-PDF regression when updating platform support.
+ * Do not replace this with CSS counter(page): WebKit does not provide the actual
+ * page count to ordinary document content. */
+@interface MDPrintFooter : NSObject <WKUIDelegate>
+@end
+
+@implementation MDPrintFooter
+- (CGFloat)_webViewFooterHeight:(WKWebView *)webView {
+    (void)webView;
+    return 24;
+}
+
+- (void)_webView:(WKWebView *)webView drawFooterInRect:(NSRect)rect
+    forPageWithTitle:(NSString *)title URL:(NSURL *)url {
+    (void)webView; (void)title; (void)url;
+    NSPrintOperation *op = NSPrintOperation.currentOperation;
+    NSRange pages = NSMakeRange(0, 0);
+    /* Ask the printed view for the full document range, not the user's selected
+     * print range. The total stays correct when printing only pages 2–3. */
+    if (!op || ![op.view knowsPageRange:&pages] || pages.length == 0 ||
+        pages.length >= NSIntegerMax || op.currentPage < 1) return;
+    NSString *label = [NSString stringWithFormat:@"Page %ld of %lu",
+                       (long)op.currentPage, (unsigned long)pages.length];
+    NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
+    style.alignment = NSTextAlignmentCenter;
+    NSDictionary *attributes = @{NSFontAttributeName: [NSFont systemFontOfSize:9],
+                                  NSForegroundColorAttributeName: NSColor.darkGrayColor,
+                                  NSParagraphStyleAttributeName: style};
+    CGFloat height = [label sizeWithAttributes:attributes].height;
+    NSRect line = NSMakeRect(rect.origin.x, rect.origin.y + (rect.size.height - height) / 2,
+                             rect.size.width, height);
+    [label drawInRect:line withAttributes:attributes];
+}
+@end
+
 @class MDView;
 
 /* Receives scroll offsets from the page. Holds the view weakly so the
@@ -252,14 +290,29 @@ static NSString *AssetMime(NSString *path) {
 @property (nonatomic, copy)   NSString *tmpHTMLPath;
 @property (nonatomic, copy)   NSString *currentPath;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *scrollByPath;
+@property (nonatomic, copy) NSString *loadToken;
+@property (nonatomic) BOOL renderReady;
+@property (nonatomic) BOOL closed;
+@property (nonatomic, strong) NSPrintInfo *pendingPrintInfo;
+@property (nonatomic, strong) NSPrintOperation *printOperation;
+@property (nonatomic, strong) MDPrintFooter *printFooter;
 - (BOOL)loadMarkdownAtPath:(NSString *)mdPath;
 - (void)findText:(NSString *)text flags:(int)flags;
+- (void)startPendingPrint;
+- (BOOL)printWithInfo:(NSPrintInfo *)info;
 @end
 
 @implementation MDScrollSink
 - (void)userContentController:(WKUserContentController *)ucc
       didReceiveScriptMessage:(WKScriptMessage *)message {
     MDView *v = self.owner;
+    if ([message.body isKindOfClass:[NSDictionary class]]) {
+        if (!v.closed && [message.body[@"ready"] isEqual:v.loadToken]) {
+            v.renderReady = YES;
+            [v startPendingPrint];
+        }
+        return;
+    }
     if (v && v.currentPath && [message.body isKindOfClass:[NSNumber class]]) {
         v.scrollByPath[v.currentPath] = (NSNumber *)message.body;
     }
@@ -284,6 +337,8 @@ static NSString *AssetMime(NSString *path) {
         [cfg setURLSchemeHandler:_assets forURLScheme:@"x-mdview"];
 
         _web = [[MDWebView alloc] initWithFrame:self.bounds configuration:cfg];
+        _printFooter = [[MDPrintFooter alloc] init];
+        _web.UIDelegate = _printFooter; /* WebKit holds UI delegates weakly. */
         _web.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         @try { [_web setValue:@NO forKey:@"drawsBackground"]; } @catch (__unused id e) {}
         [self addSubview:_web];
@@ -296,6 +351,12 @@ static NSString *AssetMime(NSString *path) {
 }
 
 - (BOOL)loadMarkdownAtPath:(NSString *)mdPath {
+    if (self.closed || self.printOperation) return NO;
+    /* Navigation cancels a queued request; a stale page's ready message must
+     * never print the next file instead. */
+    self.pendingPrintInfo = nil;
+    self.renderReady = NO;
+    self.loadToken = NSUUID.UUID.UUIDString;
     NSData *raw = [NSData dataWithContentsOfFile:mdPath];
     if (!raw) raw = [NSData data];
     NSString *b64 = [raw base64EncodedStringWithOptions:0];
@@ -357,6 +418,10 @@ static NSString *AssetMime(NSString *path) {
                        @"border-radius:10px;opacity:.35;user-select:none;transition:opacity .15s;}"
                        @"#mdv-ver::after{content:attr(data-label);}"
                        @"#mdv-ver:hover{opacity:.95;}</style>"];
+    /* Print always uses the light palette, including when the screen is dark. */
+    [head appendFormat:@"<link rel=\"stylesheet\" media=\"print\" href=\"%@\">", AssetURL(@"github-markdown-light.css")];
+    [head appendFormat:@"<link rel=\"stylesheet\" media=\"print\" href=\"%@\">", AssetURL(@"hl-github.css")];
+    [head appendFormat:@"<link rel=\"stylesheet\" media=\"print\" href=\"%@\">", AssetURL(@"print.css")];
 
     /* ---- libraries ---- */
     [head appendFormat:@"<script src=\"%@\"></script>", AssetURL(@"marked.min.js")];
@@ -376,7 +441,7 @@ static NSString *AssetMime(NSString *path) {
 
     NSString *bootstrap = [NSString stringWithFormat:@""
         "var __theme=\"%@\";var __scrollY=%ld;var __mathDollar=%d;var __wantMath=%d;"
-        "window.addEventListener('load',function(){"
+        "window.addEventListener('load',async function(){"
         "var b64=document.getElementById('md-data').textContent.trim();"
         "var md=new TextDecoder('utf-8').decode(Uint8Array.from(atob(b64),function(c){return c.charCodeAt(0);}));"
         "try{marked.setOptions({gfm:true,breaks:false});}catch(e){}"
@@ -389,20 +454,27 @@ static NSString *AssetMime(NSString *path) {
          * document (e.g. <img onerror>, <script>) cannot execute. */
         "if(window.DOMPurify){out=DOMPurify.sanitize(out,{USE_PROFILES:{html:true}});}"
         "var content=document.getElementById('content');content.innerHTML=out;"
-        "if(window.mermaid){"
+        "var diagramReady=Promise.resolve();if(window.mermaid){"
           "content.querySelectorAll('code.language-mermaid').forEach(function(code){"
             "var d=document.createElement('div');d.className='mermaid';d.textContent=code.textContent;"
             "var pre=code.parentNode;pre.parentNode.replaceChild(d,pre);});"
           "try{var dark=(__theme==='dark')||(__theme==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches);"
           "mermaid.initialize({startOnLoad:false,theme:dark?'dark':'default',securityLevel:'strict'});"
-          "mermaid.run();}catch(e){}}"
+          "diagramReady=mermaid.run().catch(function(){});}catch(e){}}"
         "try{content.querySelectorAll('pre code:not(.language-mermaid)').forEach(function(el){hljs.highlightElement(el);});}catch(e){}"
         /* Render the spans the tokenizers left behind, after sanitizing. */
         "if(__wantMath&&window.__dcMathRender)try{__dcMathRender(content);}catch(e){}"
         "try{if(__scrollY>0)window.scrollTo(0,__scrollY);}catch(e){}"
         "var post=function(){try{window.webkit.messageHandlers.dcmd.postMessage(window.scrollY);}catch(e){}};"
         "var t=null;window.addEventListener('scroll',function(){if(t)return;t=setTimeout(function(){t=null;post();},120);},{passive:true});"
-        "});", theme, savedY, allowDollar ? 1 : 0, wantMath ? 1 : 0];
+        /* Wait only for printing; slow resources must not delay scroll tracking.
+         * Ask for fonts after Mermaid has inserted any SVG labels. */
+        "await diagramReady;"
+        "await Promise.all([document.fonts.ready,...Array.from(content.querySelectorAll('img'),function(img){"
+          "return img.complete?Promise.resolve():new Promise(function(resolve){"
+          "img.addEventListener('load',resolve,{once:true});img.addEventListener('error',resolve,{once:true});});})]);"
+        "window.webkit.messageHandlers.dcmd.postMessage({ready:'%@'});"
+        "});", theme, savedY, allowDollar ? 1 : 0, wantMath ? 1 : 0, self.loadToken];
 
     NSMutableString *html = [NSMutableString string];
     [html appendString:@"<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
@@ -430,6 +502,53 @@ static NSString *AssetMime(NSString *path) {
     NSURL *rootURL = [NSURL fileURLWithPath:@"/" isDirectory:YES];
     [self.web loadFileURL:fileURL allowingReadAccessToURL:rootURL];
     return YES;
+}
+
+/* Keep the native sheet and its WebKit printing view alive through completion,
+ * even if the host releases the plugin window while the sheet is open. */
+- (BOOL)printWithInfo:(NSPrintInfo *)info {
+    if (self.closed || !self.window || self.window.attachedSheet ||
+        self.pendingPrintInfo || self.printOperation) return NO;
+    self.pendingPrintInfo = info;
+    [self startPendingPrint];
+    __weak MDView *weakSelf = self;
+    NSString *token = self.loadToken;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 20 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        MDView *view = weakSelf;
+        if ([view.loadToken isEqual:token] && view.pendingPrintInfo == info) {
+            view.pendingPrintInfo = nil;
+            NSBeep(); /* Loading failed or a resource never settled; allow retry. */
+        }
+    });
+    return YES; /* Accepted; cancellation in the native sheet is not an ABI error. */
+}
+
+- (void)startPendingPrint {
+    if (!self.renderReady || !self.pendingPrintInfo || self.closed) return;
+    /* Leave the script-message / WLX callback before entering AppKit printing. */
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!self.renderReady || !self.pendingPrintInfo || self.closed) return;
+        NSPrintInfo *info = self.pendingPrintInfo;
+        self.pendingPrintInfo = nil;
+        if (!self.window || self.window.attachedSheet) { NSBeep(); return; }
+        NSPrintOperation *op = [self.web printOperationWithPrintInfo:info];
+        if (!op) { NSBeep(); return; }
+        op.jobTitle = self.currentPath.lastPathComponent;
+        op.showsPrintPanel = YES;
+        op.showsProgressPanel = YES;
+        op.canSpawnSeparateThread = YES; /* WebKit pagination needs its main-thread IPC serviced. */
+        self.printOperation = op;
+        [op runOperationModalForWindow:self.window delegate:self
+                       didRunSelector:@selector(printOperationDidRun:success:contextInfo:)
+                          contextInfo:(void *)CFBridgingRetain(self)];
+    });
+}
+
+- (void)printOperationDidRun:(NSPrintOperation *)operation success:(BOOL)success contextInfo:(void *)context {
+    (void)operation; (void)success;
+    MDView *keepAlive = CFBridgingRelease(context);
+    if (NSThread.isMainThread) keepAlive.printOperation = nil;
+    else dispatch_async(dispatch_get_main_queue(), ^{ keepAlive.printOperation = nil; });
 }
 
 /* Find `text` with WebKit's own find engine — the one Safari's Cmd+F uses — so
@@ -580,6 +699,8 @@ void __stdcall ListCloseWindow(HWND ListWin) {
     if (!ListWin) return;
     void (^close)(void) = ^{
         MDView *view = (MDView *)CFBridgingRelease(ListWin); /* -1 */
+        view.closed = YES;
+        view.pendingPrintInfo = nil;
         [view removeFromSuperview];
     };
     if ([NSThread isMainThread]) close();
@@ -657,6 +778,43 @@ int __stdcall ListSearchTextW(HWND ListWin, WCHAR *SearchString, int SearchParam
     if ([NSThread isMainThread]) run();
     else dispatch_sync(dispatch_get_main_queue(), run);
     return LISTPLUGIN_OK;
+}
+
+/* DC enables Print only if ListPrint or ListPrintW is exported, and prefers W.
+ * It may pass only a basename: print the already loaded document, never reopen
+ * FileToPrint relative to the host's working directory. PrintFlags is reserved. */
+__attribute__((visibility("default")))
+int __stdcall ListPrintW(HWND ListWin, WCHAR *FileToPrint, WCHAR *DefPrinter,
+                        int PrintFlags, ListPrintMargins *Margins) {
+    (void)FileToPrint; (void)PrintFlags;
+    if (!ListWin) return LISTPLUGIN_ERROR;
+    MDView *view = (__bridge MDView *)ListWin;
+    if (![view isKindOfClass:[MDView class]]) return LISTPLUGIN_ERROR;
+    __block BOOL accepted = NO;
+    void (^run)(void) = ^{
+        NSPrintInfo *info = [NSPrintInfo.sharedPrintInfo copy];
+        info.horizontalPagination = NSPrintingPaginationModeFit;
+        info.verticalPagination = NSPrintingPaginationModeAutomatic;
+        info.horizontallyCentered = NO;
+        info.verticallyCentered = NO;
+        if (Margins) {
+            const CGFloat pointsPerUnit = 72.0 / 254.0;
+            info.leftMargin = MAX(0, Margins->left) * pointsPerUnit;
+            info.topMargin = MAX(0, Margins->top) * pointsPerUnit;
+            info.rightMargin = MAX(0, Margins->right) * pointsPerUnit;
+            info.bottomMargin = MAX(0, Margins->bottom) * pointsPerUnit;
+        }
+        if (DefPrinter && DefPrinter[0]) {
+            NSUInteger n = 0;
+            while (DefPrinter[n]) n++;
+            NSPrinter *printer = [NSPrinter printerWithName:[NSString stringWithCharacters:DefPrinter length:n]];
+            if (printer) info.printer = printer;
+        }
+        accepted = [view printWithInfo:info];
+    };
+    if (NSThread.isMainThread) run();
+    else dispatch_sync(dispatch_get_main_queue(), run);
+    return accepted ? LISTPLUGIN_OK : LISTPLUGIN_ERROR;
 }
 
 __attribute__((visibility("default")))
