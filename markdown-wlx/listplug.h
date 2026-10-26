@@ -25,11 +25,11 @@ typedef struct {
 
 /* ShowFlags bits (subset) */
 #define lcp_wraptext     1
-#define lcp_fittowindow  4
-#define lcp_ansi         8
-#define lcp_ascii       16
-#define lcp_variable    32
-#define lcp_forceshow   64
+#define lcp_fittowindow  2
+#define lcp_ansi         4
+#define lcp_ascii        8
+#define lcp_variable    12
+#define lcp_forceshow   16
 
 /* ListSendCommand commands. Double Commander's viewer routes its own Cmd+C /
  * Cmd+A hotkeys here when a plugin owns the window (fviewer.pas: cm_CopyToClipboard

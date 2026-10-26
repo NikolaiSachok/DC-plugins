@@ -46,7 +46,7 @@ int main(int argc, char **argv) { @autoreleasepool {
         styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:NO];
     win.contentView.wantsLayer = YES;
     [win orderFront:nil];
-    HWND pw = ListLoad((__bridge HWND)win.contentView, argv[2], 4 | 128 /* stretch only large */);
+    HWND pw = ListLoad((__bridge HWND)win.contentView, argv[2], 2 | 32 /* lcp_fittowindow | lcp_fitlargeronly */);
     if (!pw) { fprintf(stderr, "ListLoad returned NULL\n"); return 3; }
     NSView *view = (__bridge NSView *)pw;
     pump(1.5);

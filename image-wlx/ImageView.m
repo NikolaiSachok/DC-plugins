@@ -687,7 +687,6 @@ typedef NS_ENUM(NSInteger, IVZoomMode) {
         NSRect body = NSMakeRect(0, 0, NSWidth(frame), MAX(0, NSHeight(frame) - kToolbarHeight));
         _scroll = [[IVScrollView alloc] initWithFrame:body];
         ((IVScrollView *)_scroll).owner = self;
-        _scroll.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         _scroll.contentView = [[IVClipView alloc] initWithFrame:body];
         _scroll.hasVerticalScroller = YES;
         _scroll.hasHorizontalScroller = YES;
@@ -758,7 +757,6 @@ static NSButton *ToolButton(NSString *symbol, NSString *fallback, NSString *tip,
     IVToolbar *bar = [[IVToolbar alloc] initWithFrame:NSMakeRect(0, NSHeight(self.bounds) - kToolbarHeight,
                                                                  NSWidth(self.bounds), kToolbarHeight)];
     bar.wantsLayer = YES;
-    bar.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
     self.toolbar = bar;
 
     NSBox *line = [[NSBox alloc] initWithFrame:NSMakeRect(0, 0, NSWidth(bar.bounds), 1)];
@@ -839,6 +837,17 @@ static NSButton *ToolButton(NSString *symbol, NSString *fallback, NSString *tip,
         [stack.bottomAnchor constraintEqualToAnchor:bar.bottomAnchor constant:-1],
     ]];
     [self addSubview:bar];
+}
+
+/* The toolbar and the image area are placed from the bounds rather than by
+ * autoresizing: Double Commander can create the view at a degenerate size
+ * and only then give it its real one, and springs scaled from 0 x 0 put the
+ * image area under the toolbar. */
+- (void)layoutChrome {
+    NSRect b = self.bounds;
+    CGFloat body = MAX(0, NSHeight(b) - kToolbarHeight);
+    self.scroll.frame = NSMakeRect(0, 0, NSWidth(b), body);
+    self.toolbar.frame = NSMakeRect(0, body, NSWidth(b), kToolbarHeight);
 }
 
 - (NSString *)infoText {
@@ -1083,6 +1092,7 @@ static const CGFloat kSteps[] = { 0.01, 0.02, 0.03, 0.05, 0.08, 0.1, 0.125, 0.16
 - (void)resizeSubviewsWithOldSize:(NSSize)old {
     NSPoint center = self.image ? [self visibleCenter] : NSZeroPoint;
     [super resizeSubviewsWithOldSize:old];
+    [self layoutChrome];
     if (!self.image) return;
     [self updateLimits];
     /* Fit modes re-fit; at actual size or a chosen zoom the part of the

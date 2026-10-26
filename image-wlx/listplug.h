@@ -16,13 +16,14 @@ typedef void *HWND;
 #define LISTPLUGIN_OK    0
 #define LISTPLUGIN_ERROR 1
 
-/* ShowFlags bits (subset). Double Commander derives the fit bits from its own
- * Image menu (fviewer.pas, PluginShowFlags): Stretch -> lcp_fittowindow,
- * Stretch only large -> lcp_fittowindow | lcp_fitlargeronly. */
-#define lcp_fittowindow    4
-#define lcp_forceshow     64
-#define lcp_fitlargeronly 128
-#define lcp_center        256
+/* ShowFlags bits (subset), as in Double Commander's sdk/wlxplugin.h. DC
+ * derives the fit bits from its own Image menu (fviewer.pas, PluginShowFlags):
+ * Stretch -> lcp_fittowindow, Stretch only large -> lcp_fittowindow |
+ * lcp_fitlargeronly. */
+#define lcp_fittowindow    2
+#define lcp_forceshow     16
+#define lcp_fitlargeronly 32
+#define lcp_center        64
 
 /* ListSendCommand commands. Double Commander's viewer routes its own Cmd+C
  * hotkey here when a plugin owns the window (cm_CopyToClipboard -> lc_copy),

@@ -75,7 +75,7 @@ int main(int argc, char **argv) { @autoreleasepool {
 
     HWND (^load)(NSString *) = ^HWND(NSString *name) {
         HWND pw = ListLoad((__bridge HWND)win.contentView,
-                           (char *)[dir stringByAppendingPathComponent:name].fileSystemRepresentation, 4 | 128);
+                           (char *)[dir stringByAppendingPathComponent:name].fileSystemRepresentation, 2 | 32 /* lcp_fittowindow | lcp_fitlargeronly */);
         /* Let the background decode finish. */
         [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.5]];
         return pw;

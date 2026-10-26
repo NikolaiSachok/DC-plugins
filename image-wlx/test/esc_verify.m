@@ -52,7 +52,7 @@ int main(int argc, char **argv){ @autoreleasepool {
     FakeDC *dc = [[FakeDC alloc] initWithFrame:NSMakeRect(0,0,900,700)];
     win.contentView = dc;
 
-    HWND pw = ListLoad((__bridge HWND)dc, argv[2], 4 | 128);
+    HWND pw = ListLoad((__bridge HWND)dc, argv[2], 2 | 32 /* lcp_fittowindow | lcp_fitlargeronly */);
     if (!pw) { fprintf(stderr, "ListLoad returned NULL\n"); return 2; }
     NSView *canvas = Find((__bridge NSView *)pw, @"IVCanvas");
     [win makeKeyAndOrderFront:nil];

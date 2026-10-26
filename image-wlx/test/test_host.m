@@ -21,7 +21,11 @@ typedef void (*ListCloseWindow_t)(HWND);
 typedef int  (*ListSendCommand_t)(HWND, int, int);
 typedef void (*ListGetDetectString_t)(char *, int);
 
-enum { kFit = 4, kFitLarge = 4 | 128, lc_newparams = 2 };
+/* Values from Double Commander's sdk/wlxplugin.h, written out here rather
+ * than taken from the plugin's listplug.h, so a wrong header cannot agree
+ * with a wrong test. */
+enum { lcp_wraptext = 1, lcp_fittowindow = 2, lcp_ansi = 4, lcp_fitlargeronly = 32,
+       kFit = lcp_fittowindow, kFitLarge = lcp_fittowindow | lcp_fitlargeronly, lc_newparams = 2 };
 
 static ListLoad_t ListLoad;
 static ListLoadNext_t ListLoadNext;
@@ -233,6 +237,15 @@ static void TestOpeningZoom(void) {
     check(near(p.mag, MIN(vp.width / 300, vp.height / 200)), @"small image, Stretch -> enlarged to fit");
     Close(p);
 
+    /* What DC actually passes with Stretch on and the default text options. */
+    p = Load(@"photo.jpg", lcp_wraptext | lcp_fittowindow);
+    check(near(p.mag, fit), @"DC's own flags (wrap text + Stretch = 0x3) -> fit");
+    Close(p);
+
+    p = Load(@"photo.jpg", lcp_ansi);
+    check(near(p.mag, 1), @"an encoding bit alone (lcp_ansi) is not Stretch -> 100%");
+    Close(p);
+
     p = Load(@"photo.jpg", 0);
     check(near(p.mag, 1), @"no Stretch -> 100%");
     NSRect b = p.scroll.contentView.bounds;
@@ -353,6 +366,24 @@ static void TestResizeAndToggle(void) {
     NSTextField *info = [p.view valueForKey:@"infoLabel"];
     check(!info.selectable && !info.acceptsFirstResponder, @"the toolbar readout never takes focus from the image");
     Close(p);
+
+    /* DC may create the plugin in a window that has no size yet and only
+     * then give it one (TWlxModule.ResizeWindow -> setFrame:). */
+    NSView *empty = [[NSView alloc] initWithFrame:NSZeroRect];
+    [gWin.contentView addSubview:empty];
+    HWND h = ListLoad((__bridge HWND)empty, (char *)Sample(@"photo.jpg").fileSystemRepresentation, kFitLarge);
+    NSView *v = (__bridge NSView *)h;
+    v.frame = NSMakeRect(0, 0, 640, 480);
+    NSScrollView *sc = (NSScrollView *)Find(v, @"IVScrollView");
+    NSView *bar = [v valueForKey:@"toolbar"];
+    check(near(NSMaxY(sc.frame), NSMinY(bar.frame)) && near(NSMaxY(bar.frame), 480) && near(NSMinY(sc.frame), 0),
+          [NSString stringWithFormat:@"created at 0 x 0, then sized: image area %.0f pt tall, under a toolbar at %.0f",
+              NSHeight(sc.frame), NSMinY(bar.frame)]);
+    NSSize vp = sc.contentView.frame.size;
+    check(near(sc.magnification, MIN(vp.width / 1600, vp.height / 1000)), @"  and the image fits the area it got");
+    ListCloseWindow(h);
+    [empty removeFromSuperview];
+    pump(0.05);
 
     p = Load(@"alpha.png", kFitLarge);   /* small: opens at 100% */
     [p waitForPixels];
