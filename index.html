@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="google-site-verification" content="CV7PpDhXu3wibVB7FyQnEst6csNsauwLdyxRCKkASFs" />
-<title>Double Commander plugins for macOS — EPUB/FB2 reader, Markdown viewer &amp; media-info columns</title>
-<meta name="description" content="Free, native macOS plugins for Double Commander: an e-book reader (WLX) that opens EPUB and FictionBook FB2 files with a contents sidebar, a Markdown preview/viewer plugin (WLX) with Mermaid diagrams &amp; KaTeX math, and a media-info content plugin (WDX) showing image &amp; video resolution, duration, and PDF page count as custom columns. Universal binaries, no dependencies, open source.">
+<title>Double Commander plugins for macOS — image viewer with zoom, EPUB/FB2 reader, Markdown viewer &amp; media-info columns</title>
+<meta name="description" content="Free, native macOS plugins for Double Commander: an image viewer (WLX) with real zoom and pan and vector-sharp SVG for 60+ formats, an e-book reader (WLX) that opens EPUB and FictionBook FB2 files with a contents sidebar, a Markdown preview/viewer plugin (WLX) with Mermaid diagrams &amp; KaTeX math, and a media-info content plugin (WDX) showing image &amp; video resolution, duration, and PDF page count as custom columns. Universal binaries, no dependencies, open source.">
 <link rel="canonical" href="https://nikolaisachok.github.io/DC-plugins/">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Double Commander plugins for macOS — EPUB/FB2 reader, Markdown viewer &amp; media-info columns">
-<meta property="og:description" content="Native macOS plugins for Double Commander: an EPUB &amp; FB2 e-book reader, a Markdown viewer (Mermaid + KaTeX), and a media-info plugin showing image/video resolution &amp; duration as columns. Universal, open source, no dependencies.">
+<meta property="og:title" content="Double Commander plugins for macOS — image viewer with zoom, EPUB/FB2 reader, Markdown viewer &amp; media-info columns">
+<meta property="og:description" content="Native macOS plugins for Double Commander: an image viewer with zoom, pan and sharp SVG, an EPUB &amp; FB2 e-book reader, a Markdown viewer (Mermaid + KaTeX), and a media-info plugin showing image/video resolution &amp; duration as columns. Universal, open source, no dependencies.">
 <meta property="og:url" content="https://nikolaisachok.github.io/DC-plugins/">
 <meta property="og:image" content="https://nikolaisachok.github.io/DC-plugins/assets/screenshot-markdown.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -18,14 +18,14 @@
 {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  "name": "Double Commander macOS plugins — BookView, MarkdownView & MediaInfo",
+  "name": "Double Commander macOS plugins — ImageView, BookView, MarkdownView & MediaInfo",
   "operatingSystem": "macOS 11+",
   "applicationCategory": "DeveloperApplication",
   "url": "https://nikolaisachok.github.io/DC-plugins/",
   "downloadUrl": "https://github.com/NikolaiSachok/DC-plugins/releases",
   "softwareHelp": "https://github.com/NikolaiSachok/DC-plugins/wiki",
   "license": "https://opensource.org/licenses/MIT",
-  "description": "Native macOS plugins for Double Commander: an e-book reader (WLX) for EPUB and FictionBook FB2 with a contents sidebar, a Markdown preview/viewer plugin (WLX) with Mermaid diagrams and KaTeX math, and a media-info content plugin (WDX) showing image and video resolution, duration, and PDF page count as custom columns.",
+  "description": "Native macOS plugins for Double Commander: an image viewer (WLX) with zoom, pan and vector-sharp SVG for 60+ formats, an e-book reader (WLX) for EPUB and FictionBook FB2 with a contents sidebar, a Markdown preview/viewer plugin (WLX) with Mermaid diagrams and KaTeX math, and a media-info content plugin (WDX) showing image and video resolution, duration, and PDF page count as custom columns.",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
 }
 </script>
@@ -63,7 +63,7 @@
 <header>
   <div class="wrap">
     <h1>Double Commander plugins for macOS
-      <span class="sub">A native <strong>EPUB &amp; FB2 e-book reader</strong>, a <strong>Markdown viewer</strong> (with Mermaid diagrams &amp; KaTeX math), and a <strong>media-info</strong> plugin that shows image &amp; video resolution, duration, and PDF page count — universal, open source, no dependencies.</span>
+      <span class="sub">A native <strong>image viewer</strong> with real zoom and pan, an <strong>EPUB &amp; FB2 e-book reader</strong>, a <strong>Markdown viewer</strong> (with Mermaid diagrams &amp; KaTeX math), and a <strong>media-info</strong> plugin that shows image &amp; video resolution, duration, and PDF page count — universal, open source, no dependencies.</span>
     </h1>
     <div class="badges">
       <a class="primary" href="https://github.com/NikolaiSachok/DC-plugins/releases">Download latest release</a>
@@ -84,7 +84,28 @@
     <figcaption>Real output: <code>.md</code> rendered in Double Commander's viewer — KaTeX math, a Mermaid diagram, highlighted code, and tables, all from one plugin.</figcaption>
   </figure>
 
-  <p>Three small, fast, native plugins that fill real gaps in <a href="https://doublecmd.sourceforge.io/">Double Commander</a> on macOS. Each is a universal binary (Apple Silicon + Intel), built with no third-party native dependencies and no network access at view time, and tested against the real built artifact. They use the Total Commander plugin ABI, so they load straight into Double Commander.</p>
+  <p>Four small, fast, native plugins that fill real gaps in <a href="https://doublecmd.sourceforge.io/">Double Commander</a> on macOS. Each is a universal binary (Apple Silicon + Intel), built with no third-party native dependencies and no network access at view time, and tested against the real built artifact. They use the Total Commander plugin ABI, so they load straight into Double Commander.</p>
+
+  <h2 id="imageview">ImageView <span class="tag">WLX · lister</span></h2>
+  <div class="card">
+    <p><strong>An image viewer for Double Commander on macOS with zoom and pan that work.</strong> Press <strong>F3</strong> or open Quick View on an image and it opens fitted to the window; pinch, <strong>⌘</strong>+scroll or <strong>⌘=</strong> / <strong>⌘−</strong> to zoom, drag to pan. SVG stays sharp at any magnification.</p>
+    <figure class="hero" style="max-width:640px;margin:22px auto 6px">
+      <picture>
+        <source srcset="assets/screenshot-image.webp" type="image/webp">
+        <img src="assets/screenshot-image.png" width="2160" height="1410"
+             loading="lazy" decoding="async"
+             alt="A service diagram (SVG) open in Double Commander's viewer with the ImageView plugin — fitted at 68%, with the zoom toolbar on the left and the readout 1600 × 1000 pt · SVG · 8 KB on the right">
+      </picture>
+    </figure>
+    <ul>
+      <li>Zoom around the pointer with pinch or <strong>⌘</strong>/<strong>⌥</strong>+scroll, from the keyboard, a preset menu, or a double-click that toggles Fit and 100%</li>
+      <li><strong>SVG and SVGZ redrawn as vectors</strong> at every zoom level; only the exposed part is drawn, so large diagrams pan smoothly even at 1600%</li>
+      <li>60+ formats through the system's own decoders: PNG, JPEG, HEIC, WebP, AVIF, JPEG XL, TIFF, PSD, EXR, camera RAW, animated GIF and APNG</li>
+      <li>Pixel size, format and file size in the toolbar; EXIF orientation applied; transparency over a checkerboard; crisp pixels past 200%</li>
+      <li>Follows the viewer's <em>Stretch</em> settings; <strong>⌘C</strong> copies the image, plus the original file where a paste wants it</li>
+    </ul>
+    <p class="muted">Double Commander's bundled preview cannot zoom or pan at all, and its own Graphics mode scales a fixed bitmap, so SVG goes soft.</p>
+  </div>
 
   <h2 id="bookview">BookView <span class="tag">WLX · lister</span></h2>
   <div class="card">
@@ -102,6 +123,7 @@
       <li>The whole book as one continuous reflowable column, with cover, metadata, reading position and progress</li>
       <li>FictionBook structures kept intact: epigraphs with their attribution, poems in stanzas, cites, tables, and footnotes that jump to the notes and back</li>
       <li>Light, dark and sepia; adjustable text size; books declared <code>windows-1251</code> decode correctly</li>
+      <li>Find (<strong>⌘F</strong>, <strong>F3</strong>) across the whole book, with case-sensitive and backwards search</li>
       <li>Served straight out of the container in-process — nothing unpacked to disk, and a strict CSP means a book cannot run script or reach the network</li>
     </ul>
     <p class="muted">There was no EPUB or FB2 lister for Double Commander on macOS before this: every existing one is a Windows PE plugin that cannot load into a Mach-O host.</p>
@@ -114,6 +136,7 @@
       <li>GitHub-style rendering, syntax highlighting, tables &amp; task lists (GitHub Flavored Markdown)</li>
       <li><strong>Mermaid diagrams</strong> and <strong>KaTeX math</strong> (loaded only for files that use them)</li>
       <li>Automatic light/dark theming; relative images; scroll position preserved across files</li>
+      <li>Find (<strong>⌘F</strong>, <strong>F3</strong>) in the rendered view, and printing or Save as PDF with <em>Page N of M</em> footers</li>
       <li>Content is sanitized (DOMPurify) before rendering — safe on untrusted files</li>
     </ul>
   </div>
