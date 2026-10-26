@@ -121,9 +121,14 @@ error.
   whole document at the zoomed size first: panning a large diagram at 400%
   took seconds per step, against tens of milliseconds now.)
 - **SVG compatibility.** CoreSVG does not know the CSS `transparent` keyword
-  and paints it black, so `fill="transparent"` / `fill: transparent` (as Miro
-  and other diagram tools export connectors) is read as `none`. Cmd+C still
-  copies the file's original source.
+  and paints it black: `fill="transparent"` (as Miro and other diagram tools
+  export connectors) turns into solid wedges, a gradient fading to
+  `transparent` into a black band. The keyword is rewritten before CoreSVG
+  parses the file — to `rgba(0,0,0,0)` in `fill`, `stroke` and `color`, and
+  to black at zero `stop-opacity` / `flood-opacity` in `stop-color` and
+  `flood-color`, whose alpha CoreSVG ignores. CSS is rewritten only inside
+  `style` attributes and `<style>` elements. Cmd+C still copies the file's
+  original source.
 - **Cmd+= / Cmd+-** are bound on DC's own Viewer form and never reach the
   plugin's view, so a local event monitor takes them first — only while the
   image has keyboard focus, so Quick View's file panel keeps its keys.

@@ -461,11 +461,14 @@ static void TestVectorSharpness(void) {
     Close(p);
 
     p = Load(@"transparent.svg", kFitLarge);
-    NSColor *attrFill = sample(p.canvas, NSMakeRect(9, 5, 2, 2)), *cssFill = sample(p.canvas, NSMakeRect(29, 5, 2, 2));
     BOOL (^white)(NSColor *) = ^BOOL(NSColor *c) {
         return c.redComponent > 0.9 && c.greenComponent > 0.9 && c.blueComponent > 0.9;
     };
-    check(white(attrFill) && white(cssFill), @"fill=\"transparent\" paints nothing (it was black)");
+    NSArray *kinds = @[ @"fill attribute", @"style attribute", @"gradient stop-color",
+                        @"color via currentColor", @"<style> rule", @"filter flood-color" ];
+    for (NSUInteger i = 0; i < kinds.count; i++)
+        check(white(sample(p.canvas, NSMakeRect(20 * i + 9, 5, 2, 2))),
+              [NSString stringWithFormat:@"`transparent` paints nothing: %@ (it was black)", kinds[i]]);
     Close(p);
 }
 

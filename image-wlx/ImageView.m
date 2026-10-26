@@ -185,29 +185,65 @@ typedef NS_ENUM(NSInteger, IVKind) { IVKindRaster, IVKindVector };
     return image;
 }
 
-/* CoreSVG predates SVG 2's use of CSS colours and does not know the
- * `transparent` keyword; it falls back to the default black fill, so a
- * connector drawn as `fill="transparent"` (Miro and other diagram tools
- * export them that way) becomes a solid black wedge. Paint that is
- * `transparent` means no paint, which CoreSVG knows as `none`. */
+/* CoreSVG does not know the CSS `transparent` keyword and paints it black,
+ * so a connector drawn as `fill="transparent"` (Miro and other diagram tools
+ * export them that way) becomes a solid black wedge, and a gradient fading to
+ * `transparent` a black band. The keyword is rewritten before CoreSVG sees
+ * it: to rgba(0,0,0,0) for fill, stroke and color; for stop-color and
+ * flood-color, whose alpha CoreSVG ignores, to black at stop-opacity /
+ * flood-opacity 0. CSS is rewritten only inside style attributes and <style>
+ * elements, so text that reads "fill: transparent" is left alone. */
 static NSData *CoreSVGCompatible(NSData *svg) {
     static const char kKeyword[] = "transparent";
     if (!memmem(svg.bytes, svg.length, kKeyword, sizeof kKeyword - 1)) return svg;
     NSString *text = [[NSString alloc] initWithData:svg encoding:NSUTF8StringEncoding];
     if (!text) return svg;
-    static NSRegularExpression *attr, *css;
+    static NSRegularExpression *paintAttr, *paintCSS, *opacityCSS, *opacityTag, *styles;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        attr = [NSRegularExpression regularExpressionWithPattern:
-                @"\\b(fill|stroke)(\\s*=\\s*)([\"'])\\s*transparent\\s*\\3"
-                options:NSRegularExpressionCaseInsensitive error:NULL];
-        css = [NSRegularExpression regularExpressionWithPattern:
-               @"\\b(fill|stroke)(\\s*:\\s*)transparent\\b"
-               options:NSRegularExpressionCaseInsensitive error:NULL];
+        NSRegularExpressionOptions ci = NSRegularExpressionCaseInsensitive;
+        NSString *value = @"(\\s*=\\s*)([\"'])\\s*transparent\\s*\\3";
+        paintAttr = [NSRegularExpression regularExpressionWithPattern:
+                     [@"(?<![\\w:-])(fill|stroke|color)" stringByAppendingString:value] options:ci error:NULL];
+        paintCSS = [NSRegularExpression regularExpressionWithPattern:
+                    @"(?<![\\w:-])(fill|stroke|color)(\\s*:\\s*)transparent(?![\\w-])" options:ci error:NULL];
+        opacityCSS = [NSRegularExpression regularExpressionWithPattern:
+                      @"(?<![\\w:-])(stop|flood)-color\\s*:\\s*transparent(?![\\w-])" options:ci error:NULL];
+        opacityTag = [NSRegularExpression regularExpressionWithPattern:
+                      @"<[^>]*?(?<![\\w:-])(stop|flood)-color\\s*=\\s*([\"'])\\s*transparent\\s*\\2[^>]*>"
+                      options:ci error:NULL];
+        styles = [NSRegularExpression regularExpressionWithPattern:
+                  @"(?<![\\w:-])style\\s*=\\s*(\"[^\"]*\"|'[^']*')|<style\\b[^>]*>.*?</style\\s*>"
+                  options:ci | NSRegularExpressionDotMatchesLineSeparators error:NULL];
     });
     NSMutableString *out = [text mutableCopy];
-    [attr replaceMatchesInString:out options:0 range:NSMakeRange(0, out.length) withTemplate:@"$1$2$3none$3"];
-    [css replaceMatchesInString:out options:0 range:NSMakeRange(0, out.length) withTemplate:@"$1$2none"];
+    [paintAttr replaceMatchesInString:out options:0 range:NSMakeRange(0, out.length)
+                         withTemplate:@"$1$2$3rgba(0,0,0,0)$3"];
+    /* Back to front, so the ranges still ahead stay valid. */
+    for (NSTextCheckingResult *m in [opacityTag matchesInString:out options:0
+                                                          range:NSMakeRange(0, out.length)].reverseObjectEnumerator) {
+        NSString *kind = [[out substringWithRange:[m rangeAtIndex:1]] lowercaseString];
+        NSMutableString *tag = [[out substringWithRange:m.range] mutableCopy];
+        /* The element's own opacity attribute, if any, gives way to ours. */
+        NSString *own = [NSString stringWithFormat:@"\\s(?<![\\w:-])%@-opacity\\s*=\\s*(\"[^\"]*\"|'[^']*')", kind];
+        [[NSRegularExpression regularExpressionWithPattern:own options:NSRegularExpressionCaseInsensitive error:NULL]
+            replaceMatchesInString:tag options:0 range:NSMakeRange(0, tag.length) withTemplate:@""];
+        NSString *color = [NSString stringWithFormat:@"(?<![\\w:-])%@-color\\s*=\\s*([\"'])\\s*transparent\\s*\\1", kind];
+        NSString *black = [NSString stringWithFormat:@"%@-color=\"#000\" %@-opacity=\"0\"", kind, kind];
+        [[NSRegularExpression regularExpressionWithPattern:color options:NSRegularExpressionCaseInsensitive error:NULL]
+            replaceMatchesInString:tag options:0 range:NSMakeRange(0, tag.length)
+                      withTemplate:[NSRegularExpression escapedTemplateForString:black]];
+        [out replaceCharactersInRange:m.range withString:tag];
+    }
+    for (NSTextCheckingResult *m in [styles matchesInString:out options:0
+                                                      range:NSMakeRange(0, out.length)].reverseObjectEnumerator) {
+        NSMutableString *css = [[out substringWithRange:m.range] mutableCopy];
+        [paintCSS replaceMatchesInString:css options:0 range:NSMakeRange(0, css.length)
+                            withTemplate:@"$1$2rgba(0,0,0,0)"];
+        [opacityCSS replaceMatchesInString:css options:0 range:NSMakeRange(0, css.length)
+                              withTemplate:@"$1-color:#000;$1-opacity:0"];
+        [out replaceCharactersInRange:m.range withString:css];
+    }
     return [out dataUsingEncoding:NSUTF8StringEncoding];
 }
 

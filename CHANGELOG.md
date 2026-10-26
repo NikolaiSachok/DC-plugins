@@ -21,8 +21,9 @@ independently and tagged below.
   settings. Cmd+C copies the image (plus the original file where a paste
   should get it). Files ImageIO cannot decode fall through to the next plugin.
   Large SVG diagrams pan smoothly at any zoom (only the exposed part is
-  redrawn), and paint given as the CSS `transparent` keyword is honoured
-  instead of turning black. Closes #32.
+  redrawn), and colours given as the CSS `transparent` keyword (fills,
+  strokes, gradient stops, filter floods) are honoured instead of turning
+  black. Closes #32.
 
 ## markdown-wlx 0.5.1 — 2026-10-22
 

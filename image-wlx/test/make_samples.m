@@ -143,12 +143,23 @@ int main(int argc, char **argv) { @autoreleasepool {
         writeToFile:P(@"updown.svg") atomically:YES encoding:NSUTF8StringEncoding error:NULL];
     printf("  %-16s ok\n", "updown.svg");
 
-    /* Outlines painted `transparent` (CSS keyword) as diagram tools export
-     * them: the shapes' insides must stay white, not turn black. */
-    [@"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"20\">"
-     @"<rect width=\"40\" height=\"20\" fill=\"#fff\"/>"
+    /* Colours given as the CSS `transparent` keyword, as diagram and design
+     * tools export them: every shape's inside must stay white, not turn
+     * black. One per 20 pt column: a fill attribute, a style attribute, a
+     * gradient stop (one also stating stop-opacity), `color` used through
+     * currentColor, a <style> rule, a filter's flood. */
+    [@"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"120\" height=\"20\">"
+     @"<style>.c{stroke:#333;fill:transparent}</style>"
+     @"<defs><linearGradient id=\"g\"><stop offset=\"0\" stop-color=\"transparent\" stop-opacity=\"1\"/>"
+     @"<stop offset=\"1\" style=\"stop-color: transparent\"/></linearGradient>"
+     @"<filter id=\"f\" x=\"0\" y=\"0\" width=\"1\" height=\"1\"><feFlood flood-color=\"transparent\"/></filter></defs>"
+     @"<rect width=\"120\" height=\"20\" fill=\"#fff\"/>"
      @"<path d=\"M2 2 L18 2 L10 18 Z\" stroke=\"#333\" stroke-width=\"1\" fill=\"transparent\"/>"
-     @"<path d=\"M22 2 L38 2 L30 18 Z\" style=\"stroke:#333;fill: transparent\"/></svg>\n"
+     @"<path d=\"M22 2 L38 2 L30 18 Z\" style=\"stroke:#333;fill: transparent\"/>"
+     @"<path d=\"M42 2 L58 2 L50 18 Z\" stroke=\"#333\" fill=\"url(#g)\"/>"
+     @"<path d=\"M62 2 L78 2 L70 18 Z\" stroke=\"#333\" color=\"transparent\" fill=\"currentColor\"/>"
+     @"<path class=\"c\" d=\"M82 2 L98 2 L90 18 Z\"/>"
+     @"<path d=\"M102 2 L118 2 L110 18 Z\" fill=\"#fff\" filter=\"url(#f)\"/></svg>\n"
         writeToFile:P(@"transparent.svg") atomically:YES encoding:NSUTF8StringEncoding error:NULL];
     printf("  %-16s ok\n", "transparent.svg");
 
