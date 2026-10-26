@@ -81,7 +81,13 @@ Press **F3** on an image, or turn on Quick View (**Ctrl+Q**).
 | Toggle Fit ↔ 100% | double-click, two-finger double tap |
 | Pan | drag, scroll, arrows, PgUp / PgDn, Home / End, Space |
 | Copy image | Cmd+C |
-| Close viewer | Esc |
+| Next / previous file | N / P, Alt+→ / Alt+← (F3 viewer) |
+| Close viewer | Esc, Q |
+
+Next / previous are Double Commander's own viewer commands (also in the
+viewer's File menu). They step through the files in the panel, in panel order;
+with a selection, through the selected files only. Every key the image does
+not use goes to DC's viewer in the same way.
 
 The zoom an image **opens** at follows DC's own *Image → Stretch* settings
 (keys **F** and **L** in the viewer): with *Stretch only large* (the default) a
@@ -135,11 +141,15 @@ error.
   plugin's view, so a local event monitor takes them first — only while the
   image has keyboard focus, so Quick View's file panel keeps its keys.
 
-### Escape closes the viewer
+### DC's viewer keys reach DC
 
-The canvas moves focus to DC's view and re-posts Esc through `NSApplication`,
-which is where LCL handles its shortcuts. See the charter in
-[AGENTS.md](../AGENTS.md).
+The image keeps the zoom keys and the unmodified arrows, PgUp / PgDn,
+Home / End and Space. For any other key (Esc, Q, N, P, Alt+arrows, the view
+mode digits) the canvas moves focus to DC's view and re-posts the key through
+`NSApplication`, which is where LCL handles its shortcuts. Once DC has handled
+it, the image takes focus back — unless DC moved focus to a control of its own
+or closed the viewer — so the arrows pan the next image after N. See the
+charter in [AGENTS.md](../AGENTS.md).
 
 ### Keyboard focus
 
@@ -175,6 +185,10 @@ clang -fobjc-arc -framework Cocoa -o build/test_host test/test_host.m
 # Esc reaches the host and closes the viewer
 clang -fobjc-arc -framework Cocoa -o build/esc_verify test/esc_verify.m
 ./build/esc_verify build/ImageView.wlx build/samples/photo.jpg
+
+# N / P / Alt+arrows / Q reach DC's viewer; the image keeps focus afterwards
+clang -fobjc-arc -framework Cocoa -o build/keys_verify test/keys_verify.m
+./build/keys_verify build/ImageView.wlx build/samples/photo.jpg build/samples/wide.png
 
 # Keys work straight after F3; Quick View keeps its focus
 clang -fobjc-arc -framework Cocoa -o build/focus_verify test/focus_verify.m

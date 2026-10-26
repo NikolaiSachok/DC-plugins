@@ -37,7 +37,7 @@
 #include <zlib.h>
 #include "listplug.h"
 
-#define IV_VERSION "0.1.0"   /* single source of truth for the plugin version */
+#define IV_VERSION "0.1.1"   /* single source of truth for the plugin version */
 
 /* Display bitmaps are capped so a 200-megapixel scan can't exhaust memory or
  * exceed the GPU's texture size: the longest side at 16384 px and the area at
@@ -459,6 +459,7 @@ static NSData *CoreSVGCompatible(NSData *svg) {
 - (void)magnificationDidChange;
 - (BOOL)handleZoomKey:(NSEvent *)event;
 - (BOOL)isPannable;
+- (void)claimFocusIfUnclaimed;
 @end
 
 @implementation IVCanvas
@@ -546,18 +547,37 @@ static NSData *CoreSVGCompatible(NSData *svg) {
 
 #pragma mark Keyboard
 
-/* Escape must close Double Commander's viewer. LCL processes its shortcuts
- * through NSApplication's event dispatch (-sendEvent:), not through -keyDown:
- * forwarding along the responder chain, so a key the plugin's view merely
- * passes on never reaches it. The plugin moves focus to DC's own view and
- * re-posts the Escape event, as markdown-wlx and book-wlx do. */
+/* The image keeps only the keys it uses: the zoom keys, and the arrows, Page
+ * Up/Down, Home/End and Space without a modifier, which scroll. Every other
+ * key belongs to Double Commander's viewer: Esc / Q close it, N / P and
+ * Alt+Right / Alt+Left load the next or previous file, the digits switch view
+ * mode. LCL processes its shortcuts through NSApplication's event dispatch
+ * (-sendEvent:), not through -keyDown: forwarding along the responder chain,
+ * so a key the plugin's view merely passes on never reaches it. The plugin
+ * moves focus to DC's own view and re-posts the event, as markdown-wlx and
+ * book-wlx do for Escape. */
 - (void)keyDown:(NSEvent *)event {
-    if (event.keyCode == 53 /* kVK_Escape */) { [self repostEscape:event]; return; }
     if ([self.owner handleZoomKey:event]) return;
-    [self interpretKeyEvents:@[ event ]];
+    if ([self isScrollKey:event]) { [self interpretKeyEvents:@[ event ]]; return; }
+    [self handKeyToHost:event];
 }
 
-- (void)repostEscape:(NSEvent *)event {
+- (BOOL)isScrollKey:(NSEvent *)event {
+    NSEventModifierFlags mods = event.modifierFlags &
+        (NSEventModifierFlagCommand | NSEventModifierFlagOption | NSEventModifierFlagControl);
+    if (mods) return NO;
+    switch (event.keyCode) {
+        case 123: case 124: case 125: case 126:   /* arrows */
+        case 116: case 121:                       /* Page Up, Page Down */
+        case 115: case 119:                       /* Home, End */
+        case 49:                                  /* Space */
+            return YES;
+        default:
+            return NO;
+    }
+}
+
+- (void)handKeyToHost:(NSEvent *)event {
     NSWindow *win = self.window;
     if (!win) return;
     NSView *dcView = self.owner.superview;
@@ -567,17 +587,28 @@ static NSData *CoreSVGCompatible(NSData *svg) {
     if (!moved) moved = [win makeFirstResponder:nil];
     if (win.firstResponder == self) return; /* couldn't move focus; avoid a loop */
 
-    NSEvent *esc = [NSEvent keyEventWithType:NSEventTypeKeyDown
+    NSEvent *key = [NSEvent keyEventWithType:NSEventTypeKeyDown
                                     location:event.locationInWindow
                                modifierFlags:event.modifierFlags
                                    timestamp:event.timestamp
                                 windowNumber:event.windowNumber
                                      context:nil
-                                  characters:@"\x1b"
-                 charactersIgnoringModifiers:@"\x1b"
-                                   isARepeat:NO
-                                     keyCode:53];
-    [NSApp postEvent:esc atStart:YES];
+                                  characters:event.characters
+                 charactersIgnoringModifiers:event.charactersIgnoringModifiers
+                                   isARepeat:event.isARepeat
+                                     keyCode:event.keyCode];
+    [NSApp postEvent:key atStart:YES];
+
+    /* Take focus back once DC has handled the key, so the arrows keep panning
+     * the next image after N. The re-posted event is at the head of the queue
+     * and is dispatched before the run loop gets to this block. Not when DC
+     * moved focus to a control of its own, closed the viewer, or opened a
+     * dialog. */
+    __weak IVView *owner = self.owner;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        IVView *me = owner;
+        if (me.window.isKeyWindow) [me claimFocusIfUnclaimed];
+    });
 }
 
 /* Arrow keys, Page Up/Down, Home/End and Space scroll the image. */
@@ -599,20 +630,14 @@ static NSData *CoreSVGCompatible(NSData *svg) {
 - (void)scrollPageDown:(id)s { (void)s; [self scrollBy:NSMakePoint(0,  [self pageStep])]; }
 - (void)pageUp:(id)s         { [self scrollPageUp:s]; }
 - (void)pageDown:(id)s       { [self scrollPageDown:s]; }
-- (void)insertText:(id)text {
-    if ([text isEqual:@" "]) [self scrollPageDown:nil];
-    else NSBeep();
-}
+- (void)insertText:(id)text { (void)text; [self scrollPageDown:nil]; } /* Space */
 - (void)scrollToBeginningOfDocument:(id)s { (void)s; [self scrollBy:NSMakePoint(0, -CGFLOAT_MAX / 4)]; }
 - (void)scrollToEndOfDocument:(id)s       { (void)s; [self scrollBy:NSMakePoint(0,  CGFLOAT_MAX / 4)]; }
 - (void)moveToBeginningOfDocument:(id)s   { [self scrollToBeginningOfDocument:s]; }
 - (void)moveToEndOfDocument:(id)s         { [self scrollToEndOfDocument:s]; }
 - (void)doCommandBySelector:(SEL)sel {
-    if ([self respondsToSelector:sel]) {
+    if ([self respondsToSelector:sel])
         ((void (*)(id, SEL, id))[self methodForSelector:sel])(self, sel, nil);
-    } else if (sel == @selector(insertBacktab:) || sel == @selector(insertTab:)) {
-        [super doCommandBySelector:sel];
-    }
 }
 
 @end
