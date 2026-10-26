@@ -6,6 +6,8 @@ that stays **vector-sharp at any magnification**. It opens 60+ formats through
 the system's own decoders, and shows each image's pixel size, format and file
 size in its toolbar.
 
+![A service diagram (SVG) open in Double Commander's viewer with ImageView — fitted at 68%, with the zoom toolbar on the left and "1600 × 1000 pt · SVG · 8 KB" on the right](docs/screenshot.png)
+
 Before this, DC on macOS showed an SVG through the bundled MacPreview (no zoom,
 no pan) or its own Graphics mode, which zooms a fixed bitmap and goes soft. See
 [#32](https://github.com/NikolaiSachok/DC-plugins/issues/32).

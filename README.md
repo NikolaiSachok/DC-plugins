@@ -7,11 +7,13 @@ Intel), **headless tests**, **CI**, and a layered **safety gate** before anythin
 So far that means a **Markdown preview/viewer plugin for Double Commander** (renders
 `.md` files in the F3 viewer, with a toggle back to raw text), a **media-info
 plugin** that shows **image and video resolution, duration, and PDF page count as
-custom columns**, and an **e-book reader** that opens EPUB and FictionBook files in
-the viewer with a contents sidebar — the things people reach for as a "Double
-Commander Markdown plugin", an "image dimensions column on macOS", or an "EPUB /
-FB2 viewer plugin for Double Commander" (of which there was no macOS one at all).
-All are WLX/WDX plugins using the Total Commander plugin ABI.
+custom columns**, an **e-book reader** that opens EPUB and FictionBook files in
+the viewer with a contents sidebar, and an **image viewer** with real zoom and pan
+and vector-sharp SVG — the things people reach for as a "Double Commander
+Markdown plugin", an "image dimensions column on macOS", an "EPUB / FB2 viewer
+plugin for Double Commander" (of which there was no macOS one at all), or a way
+to "zoom an SVG in Double Commander". All are WLX/WDX plugins using the Total
+Commander plugin ABI.
 
 This repo is also a worked example of how I build small native tools end-to-end —
 investigate the platform, prove the mechanism with a focused test before writing the
@@ -42,13 +44,19 @@ switch still lets you flip to the raw **Text** view (and back) at any time.
 **F3** on an `.epub`, `.fb2` or `.fbz` opens the book itself — contents sidebar,
 continuous reflowable text, cover and reading progress — instead of the container.
 
+![A service diagram (SVG) open in Double Commander's viewer with ImageView — fitted to the window, with the zoom toolbar and the readout "1600 × 1000 pt · SVG · 8 KB"](image-wlx/docs/screenshot.png)
+
+**F3** (or Quick View) on an image opens it fitted to the window, then pinch,
+Cmd+scroll or Cmd+= / Cmd+- to zoom and drag to pan. SVG is redrawn as vectors at
+every zoom, so a large diagram stays sharp, and pans smoothly, at 1600%.
+
 ## Quick start
 
 Requires macOS 11+ and the Xcode command-line tools (`xcode-select --install`).
 Every plugin builds and installs the same way:
 
 ```sh
-cd book-wlx        # or markdown-wlx, or media-info-wdx
+cd image-wlx       # or book-wlx, markdown-wlx, media-info-wdx
 ./build.sh         # → build/<Plugin>.wlx|wdx  (universal: arm64 + x86_64)
 # Quit Double Commander first (it rewrites its config on exit), then:
 ./install.sh       # installs to ~/Library/Preferences/doublecmd/ and registers it
@@ -67,7 +75,8 @@ A Double Commander plugin is a native shared library with a fixed C entry-point
 table (the Total Commander plugin ABI). A **WLX** lister plugin like `markdown-wlx`
 or `book-wlx` is a `.wlx` Mach-O dylib exporting `ListLoad`, `ListLoadNext`, `ListCloseWindow`,
 `ListGetDetectString`, `ListSetDefaultParams`, and `ListSendCommand`. On macOS the window handles in
-that ABI are `NSView*`, so a viewer plugin builds an `NSView` (here, a `WKWebView`)
+that ABI are `NSView*`, so a viewer plugin builds an `NSView` (a `WKWebView` for
+the Markdown and e-book viewers, a native `NSScrollView` for the image viewer)
 and hands it back to DC. A **WDX** content plugin like `media-info-wdx` is a `.wdx`
 dylib exporting `ContentGetSupportedField` / `ContentGetValue` instead — it returns
 *data fields* DC renders in custom columns and tooltips rather than a view.
@@ -97,6 +106,7 @@ Every plugin in this collection aims to hold the same bar:
 .
 ├── markdown-wlx/            # Markdown lister plugin (WLX): renders .md in the viewer
 ├── book-wlx/                # e-book lister plugin (WLX): reads EPUB and FB2 books
+├── image-wlx/               # image lister plugin (WLX): zoom, pan, vector-sharp SVG
 ├── media-info-wdx/          # media-metadata content plugin (WDX): dimensions, duration, …
 ├── docs/                    # cross-plugin docs (architecture, adding a plugin)
 ├── scripts/leak-guard.sh    # generic pre-publish safety gate
