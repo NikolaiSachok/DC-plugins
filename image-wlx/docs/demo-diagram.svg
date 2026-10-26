@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" font-family="-apple-system, Helvetica Neue, Helvetica, Arial, sans-serif">
+  <!-- Demo artwork for the ImageView screenshot: a generic service diagram. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f7f9fc"/>
+      <stop offset="1" stop-color="#eef2f8"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4f8ef7"/>
+      <stop offset="1" stop-color="#2f6fdb"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3fbf86"/>
+      <stop offset="1" stop-color="#23a06a"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6b445"/>
+      <stop offset="1" stop-color="#e3952a"/>
+    </linearGradient>
+    <linearGradient id="violet" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9a7bf0"/>
+      <stop offset="1" stop-color="#7a58dd"/>
+    </linearGradient>
+    <clipPath id="cClient"><rect x="80" y="440" width="250" height="180" rx="18"/></clipPath>
+    <clipPath id="cGate"><rect x="470" y="430" width="290" height="200" rx="18"/></clipPath>
+    <clipPath id="cAcc"><rect x="852" y="274" width="180" height="112" rx="16"/></clipPath>
+    <clipPath id="cCat"><rect x="852" y="474" width="180" height="112" rx="16"/></clipPath>
+    <clipPath id="cOrd"><rect x="852" y="674" width="180" height="112" rx="16"/></clipPath>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0 H0 V40" fill="none" stroke="#e1e7f0" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1600" height="1000" fill="url(#sky)"/>
+  <rect width="1600" height="1000" fill="url(#grid)"/>
+
+  <text x="80" y="96" font-size="40" font-weight="700" fill="#1d2840">Request flow</text>
+  <text x="80" y="134" font-size="20" fill="#66728a">From the client to storage, with the cache and the event queue on the side</text>
+
+  <!-- Zones -->
+  <rect x="440" y="200" width="620" height="660" rx="22" fill="#ffffff" fill-opacity="0.6" stroke="#c9d3e3" stroke-dasharray="8 6"/>
+  <text x="468" y="236" font-size="16" font-weight="600" letter-spacing="1.5" fill="#8590a6">SERVICES</text>
+  <rect x="1140" y="200" width="380" height="660" rx="22" fill="#ffffff" fill-opacity="0.6" stroke="#c9d3e3" stroke-dasharray="8 6"/>
+  <text x="1168" y="236" font-size="16" font-weight="600" letter-spacing="1.5" fill="#8590a6">DATA</text>
+
+  <!-- Connectors -->
+  <g fill="none" stroke="#7b88a1" stroke-width="2.5">
+    <path d="M330 530 H460"/>
+    <path d="M760 470 C 800 470, 800 330, 840 330 H 842"/>
+    <path d="M760 530 H842"/>
+    <path d="M760 590 C 800 590, 800 730, 840 730 H 842"/>
+    <path d="M1032 330 H1160"/>
+    <path d="M1032 530 H1160"/>
+    <path d="M1032 730 H1160"/>
+  </g>
+  <g fill="#7b88a1">
+    <path d="M470 530 l-12 -6.5 v13 z"/>
+    <path d="M852 330 l-12 -6.5 v13 z"/>
+    <path d="M852 530 l-12 -6.5 v13 z"/>
+    <path d="M852 730 l-12 -6.5 v13 z"/>
+    <path d="M1170 330 l-12 -6.5 v13 z"/>
+    <path d="M1170 530 l-12 -6.5 v13 z"/>
+    <path d="M1170 730 l-12 -6.5 v13 z"/>
+  </g>
+
+  <!-- Client -->
+  <rect x="80" y="444" width="250" height="180" rx="18" fill="#1b2a4a" fill-opacity="0.06"/>
+  <rect x="80" y="440" width="250" height="180" rx="18" fill="#ffffff" stroke="#d5dceb"/>
+  <rect x="80" y="440" width="250" height="8" fill="url(#violet)" clip-path="url(#cClient)"/>
+  <g transform="translate(112 478)">
+    <rect width="64" height="44" rx="6" fill="none" stroke="#7a58dd" stroke-width="3"/>
+    <path d="M20 54 H44 M32 44 V54" stroke="#7a58dd" stroke-width="3" stroke-linecap="round"/>
+  </g>
+  <text x="196" y="500" font-size="24" font-weight="600" fill="#1d2840">Client</text>
+  <text x="196" y="526" font-size="16" fill="#66728a">browser · app</text>
+  <text x="112" y="582" font-size="15" fill="#8590a6">HTTPS · JSON</text>
+
+  <!-- Gateway -->
+  <rect x="470" y="434" width="290" height="200" rx="18" fill="#1b2a4a" fill-opacity="0.06"/>
+  <rect x="470" y="430" width="290" height="200" rx="18" fill="#ffffff" stroke="#d5dceb"/>
+  <rect x="470" y="430" width="290" height="8" fill="url(#blue)" clip-path="url(#cGate)"/>
+  <circle cx="530" cy="490" r="28" fill="url(#blue)"/>
+  <path d="M517 490 H543 M533 480 L543 490 L533 500" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="574" y="484" font-size="24" font-weight="600" fill="#1d2840">Gateway</text>
+  <text x="574" y="510" font-size="16" fill="#66728a">routing · auth · limits</text>
+  <g font-size="15" fill="#4a5672">
+    <rect x="500" y="550" width="76" height="30" rx="15" fill="#e8f0fe"/><text x="538" y="570" text-anchor="middle">TLS</text>
+    <rect x="586" y="550" width="76" height="30" rx="15" fill="#e8f0fe"/><text x="624" y="570" text-anchor="middle">JWT</text>
+    <rect x="672" y="550" width="62" height="30" rx="15" fill="#e8f0fe"/><text x="703" y="570" text-anchor="middle">gzip</text>
+  </g>
+
+  <!-- Services -->
+  <rect x="852" y="278" width="180" height="112" rx="16" fill="#1b2a4a" fill-opacity="0.06"/><rect x="852" y="478" width="180" height="112" rx="16" fill="#1b2a4a" fill-opacity="0.06"/><rect x="852" y="678" width="180" height="112" rx="16" fill="#1b2a4a" fill-opacity="0.06"/>
+  <rect x="852" y="274" width="180" height="112" rx="16" fill="#ffffff" stroke="#d5dceb"/>
+  <rect x="852" y="474" width="180" height="112" rx="16" fill="#ffffff" stroke="#d5dceb"/>
+  <rect x="852" y="674" width="180" height="112" rx="16" fill="#ffffff" stroke="#d5dceb"/>
+  <rect x="852" y="274" width="7" height="112" fill="url(#green)" clip-path="url(#cAcc)"/>
+  <rect x="852" y="474" width="7" height="112" fill="url(#green)" clip-path="url(#cCat)"/>
+  <rect x="852" y="674" width="7" height="112" fill="url(#green)" clip-path="url(#cOrd)"/>
+  <g font-size="22" font-weight="600" fill="#1d2840">
+    <text x="880" y="320">Accounts</text>
+    <text x="880" y="520">Catalog</text>
+    <text x="880" y="720">Orders</text>
+  </g>
+  <g font-size="15" fill="#66728a">
+    <text x="880" y="346">3 replicas</text>
+    <text x="880" y="546">5 replicas</text>
+    <text x="880" y="746">3 replicas</text>
+  </g>
+  <g fill="#23a06a">
+    <circle cx="1008" cy="300" r="6"/><circle cx="1008" cy="500" r="6"/><circle cx="1008" cy="700" r="6"/>
+  </g>
+
+  <!-- Data -->
+  <rect x="1170" y="278" width="310" height="112" rx="16" fill="#1b2a4a" fill-opacity="0.06"/><rect x="1170" y="478" width="310" height="112" rx="16" fill="#1b2a4a" fill-opacity="0.06"/><rect x="1170" y="678" width="310" height="112" rx="16" fill="#1b2a4a" fill-opacity="0.06"/>
+  <g>
+    <rect x="1170" y="274" width="310" height="112" rx="16" fill="#ffffff" stroke="#d5dceb"/>
+    <rect x="1170" y="474" width="310" height="112" rx="16" fill="#ffffff" stroke="#d5dceb"/>
+    <rect x="1170" y="674" width="310" height="112" rx="16" fill="#ffffff" stroke="#d5dceb"/>
+  </g>
+  <!-- cache: lightning -->
+  <circle cx="1222" cy="330" r="28" fill="url(#amber)"/>
+  <path d="M1226 312 L1212 334 H1224 L1218 350 L1234 326 H1222 Z" fill="#fff"/>
+  <!-- database: cylinder -->
+  <g transform="translate(1196 504)" fill="none" stroke="#2f6fdb" stroke-width="3">
+    <ellipse cx="26" cy="8" rx="24" ry="8"/>
+    <path d="M2 8 V44 A24 8 0 0 0 50 44 V8"/>
+    <path d="M2 26 A24 8 0 0 0 50 26"/>
+  </g>
+  <!-- queue: stacked bars -->
+  <g transform="translate(1196 706)" fill="url(#violet)">
+    <rect width="52" height="10" rx="5"/><rect y="18" width="52" height="10" rx="5" opacity="0.75"/><rect y="36" width="52" height="10" rx="5" opacity="0.5"/>
+  </g>
+  <g font-size="22" font-weight="600" fill="#1d2840">
+    <text x="1270" y="322">Cache</text>
+    <text x="1270" y="522">Database</text>
+    <text x="1270" y="722">Event queue</text>
+  </g>
+  <g font-size="15" fill="#66728a">
+    <text x="1270" y="348">hot reads · 5 min TTL</text>
+    <text x="1270" y="548">primary + 2 read replicas</text>
+    <text x="1270" y="748">at-least-once delivery</text>
+  </g>
+
+  <text x="80" y="940" font-size="15" fill="#9aa4b8">Vector art: zoom to any size and the edges stay sharp.</text>
+</svg>

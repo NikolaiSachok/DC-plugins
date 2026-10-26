@@ -36,8 +36,11 @@ Per change, in order:
    skill before pushing when available; otherwise manually audit the diff for
    secrets, private paths, and domain-revealing content in addition to leak-guard.
 7. **Ship** — push over **HTTPS with the `gh` token**
-   (`git -c credential.helper='!gh auth git-credential' push https://github.com/<owner>/<repo>.git HEAD:<branch>`);
-   issues/PRs/releases via `gh`. Do **not** reach for SSH — this machine's key is not
+   (`git -c credential.helper= -c credential.helper='!gh auth git-credential' push https://github.com/<owner>/<repo>.git HEAD:<branch>`);
+   the empty `credential.helper=` clears the global helpers first, otherwise Git
+   Credential Manager waits for a GUI login and the push hangs, or succeeds while
+   printing `fatal: Unknown error` (check with `git ls-remote`).
+   Issues/PRs/releases via `gh`. Do **not** reach for SSH — this machine's key is not
    on the account. End commit messages with the
    `Co-Authored-By:` trailer. Bump the plugin's `VERSION` constant (single source of
    truth, must equal the tag), update `CHANGELOG.md`, then tag `<plugin>-vX.Y.Z` — the

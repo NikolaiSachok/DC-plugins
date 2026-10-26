@@ -84,6 +84,45 @@ jobs:
           clang -O1 -Wall -Wextra -o build/zip_test test/zip_test.c zipreader.c -lz
           ./build/zip_test build/samples
 
+      - name: Build image-wlx
+        working-directory: image-wlx
+        run: ./build.sh
+
+      - name: Assert universal binary (arm64 + x86_64)
+        working-directory: image-wlx
+        run: |
+          archs=$(lipo -archs build/ImageView.wlx)
+          echo "archs: $archs"
+          echo "$archs" | grep -q arm64
+          echo "$archs" | grep -q x86_64
+
+      - name: Assert WLX entry points are exported
+        working-directory: image-wlx
+        run: |
+          for sym in _ListLoad _ListLoadNext _ListCloseWindow \
+                     _ListGetDetectString _ListSetDefaultParams _ListSendCommand; do
+            nm -gU build/ImageView.wlx | grep -q " T $sym" \
+              || { echo "missing export: $sym"; exit 1; }
+          done
+          echo "all WLX exports present ✓"
+
+      # The image viewer is AppKit only (no WebKit), so its harnesses run here
+      # against generated samples: formats, fall-through, opening zoom, zoom
+      # keys, mouse, animation, FP traps, Esc, focus and copy.
+      - name: Run image-wlx harnesses (real artifact)
+        working-directory: image-wlx
+        run: |
+          clang -fobjc-arc -Wall -framework Cocoa -framework ImageIO \
+            -framework UniformTypeIdentifiers -lz -o build/make_samples test/make_samples.m
+          ./build/make_samples build/samples
+          for t in test_host esc_verify focus_verify copy_verify; do
+            clang -fobjc-arc -Wall -Wextra -framework Cocoa -o build/$t test/$t.m
+          done
+          ./build/test_host build/ImageView.wlx build/samples
+          ./build/esc_verify build/ImageView.wlx build/samples/photo.jpg
+          ./build/focus_verify build/ImageView.wlx build/samples/photo.jpg
+          ./build/copy_verify build/ImageView.wlx build/samples
+
       - name: Build media-info-wdx
         working-directory: media-info-wdx
         run: ./build.sh

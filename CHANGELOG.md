@@ -6,6 +6,25 @@ independently and tagged below.
 
 ## [Unreleased]
 
+## image-wlx 0.1.0 — 2026-10-26
+
+### Added
+- **image-wlx:** New lister plugin for images in the F3 viewer and Quick View.
+  Zoom with pinch, Cmd/Option+scroll around the pointer, Cmd+= / Cmd+-, Cmd+0
+  (actual size), Cmd+9 (fit), a preset menu, or a double-click that toggles
+  Fit and 100%; pan by dragging, scrolling or the keyboard. SVG and SVGZ are
+  redrawn as vectors at every zoom level, and past 200% raster pixels are drawn
+  unsmoothed. 60+ formats through ImageIO — PNG, JPEG, HEIC, WebP, AVIF, JPEG XL,
+  GIF, TIFF, PSD, EXR, camera RAW and more — with animation, EXIF orientation
+  and a transparency checkerboard. The toolbar shows the pixel size, format and
+  file size. The opening zoom follows DC's *Stretch* / *Stretch only large*
+  settings. Cmd+C copies the image (plus the original file where a paste
+  should get it). Files ImageIO cannot decode fall through to the next plugin.
+  Large SVG diagrams pan smoothly at any zoom (only the exposed part is
+  redrawn), and colours given as the CSS `transparent` keyword (fills,
+  strokes, gradient stops, filter floods) are honoured instead of turning
+  black. Closes #32.
+
 ## markdown-wlx 0.5.1 — 2026-10-22
 
 ### Added
