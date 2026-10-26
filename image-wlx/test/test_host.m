@@ -335,6 +335,35 @@ static void TestMouse(void) {
     Close(p);
 }
 
+static void TestResizeAndToggle(void) {
+    printf("Resizing and the Fit / 100%% toggle:\n");
+    Probe *p = Load(@"photo.jpg", 0);
+    [p waitForPixels];
+    NSClipView *clip = p.scroll.contentView;
+    [clip scrollToPoint:NSMakePoint(100, 80)];
+    [p.scroll reflectScrolledClipView:clip];
+    NSPoint c0 = NSMakePoint(NSMidX(clip.bounds), NSMidY(clip.bounds));
+    NSRect f = gWin.frame;
+    [gWin setFrame:NSInsetRect(f, 10, 10) display:YES];
+    NSPoint c1 = NSMakePoint(NSMidX(clip.bounds), NSMidY(clip.bounds));
+    check(near(p.mag, 1) && fabs(c1.x - c0.x) < 1 && fabs(c1.y - c0.y) < 1,
+          [NSString stringWithFormat:@"at 100%% a resize keeps the panned-to spot (%.0f,%.0f -> %.0f,%.0f)",
+              c0.x, c0.y, c1.x, c1.y]);
+    [gWin setFrame:f display:YES];
+    NSTextField *info = [p.view valueForKey:@"infoLabel"];
+    check(!info.selectable && !info.acceptsFirstResponder, @"the toolbar readout never takes focus from the image");
+    Close(p);
+
+    p = Load(@"alpha.png", kFitLarge);   /* small: opens at 100% */
+    [p waitForPixels];
+    NSPoint at = [p.scroll convertPoint:NSMakePoint(400, 300) toView:nil];
+    [p.canvas mouseDown:Mouse(NSEventTypeLeftMouseDown, at, 2)];
+    check(p.mag > 1.5, [NSString stringWithFormat:@"double-click on a small image enlarges it to fit (%.0f%%)", p.mag * 100]);
+    [p.canvas mouseDown:Mouse(NSEventTypeLeftMouseDown, at, 2)];
+    check(near(p.mag, 1), @"double-click again returns to 100%");
+    Close(p);
+}
+
 static void TestZoomLimits(void) {
     printf("Zoom limits and pixel view:\n");
     Probe *p = Load(@"pixel.png", kFitLarge);
@@ -487,6 +516,7 @@ int main(int argc, char **argv) { @autoreleasepool {
     TestOpeningZoom();
     TestKeys();
     TestMouse();
+    TestResizeAndToggle();
     TestZoomLimits();
     TestAnimation();
     TestLoadNext();

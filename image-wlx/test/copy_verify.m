@@ -128,6 +128,19 @@ int main(int argc, char **argv) { @autoreleasepool {
         ListCloseWindow(pw);
     }
 
+    printf("huge.svg (20000 x 20000 pt):\n");
+    {
+        HWND pw = load(@"huge.svg");
+        NSDate *t0 = [NSDate date];
+        int rc = ListSendCommand(pw, lc_copy, 0);
+        NSTimeInterval took = -t0.timeIntervalSinceNow;
+        NSSize s = PixelSize([pb dataForType:NSPasteboardTypePNG]);
+        check(rc == LISTPLUGIN_OK && s.width <= 16384 && s.width * s.height <= 64.0 * 1024 * 1024 && s.width > 0,
+              [NSString stringWithFormat:@"rasterized within the display caps (%.0f x %.0f px, %.1f s)",
+                  s.width, s.height, took]);
+        ListCloseWindow(pw);
+    }
+
     printf("Select All:\n");
     HWND pw = load(@"photo.jpg");
     NSInteger before = pb.changeCount;

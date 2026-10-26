@@ -136,6 +136,13 @@ int main(int argc, char **argv) { @autoreleasepool {
     gzclose(gz);
     printf("  %-16s ok\n", "edge.svgz");
 
+    /* An SVG whose stated size is far past the display caps: copying it must
+     * rasterize within them. */
+    [@"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20000\" height=\"20000\">"
+     @"<rect width=\"20000\" height=\"20000\" fill=\"#36c\"/></svg>\n"
+        writeToFile:P(@"huge.svg") atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+    printf("  %-16s ok\n", "huge.svg");
+
     /* Not images: must fall through to the next lister. */
     NSMutableData *junk = [NSMutableData dataWithLength:4096];
     arc4random_buf(junk.mutableBytes, junk.length);

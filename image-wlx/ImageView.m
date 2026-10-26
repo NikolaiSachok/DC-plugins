@@ -378,6 +378,15 @@ typedef NS_ENUM(NSInteger, IVKind) { IVKindRaster, IVKindVector };
 @property (nonatomic)         BOOL          dragging;
 @end
 
+/* The load counter. Background work reads it through this object, never
+ * through the view, so it cannot hold the view's last reference and end up
+ * deallocating an NSView off the main thread. */
+@interface IVGeneration : NSObject
+@property (atomic) NSUInteger value;
+@end
+@implementation IVGeneration
+@end
+
 @interface IVView : NSView
 @property (nonatomic, strong) NSScrollView *scroll;
 @property (nonatomic, strong) IVCanvas     *canvas;
@@ -620,7 +629,7 @@ typedef NS_ENUM(NSInteger, IVZoomMode) {
 @interface IVView ()
 @property (nonatomic, strong) IVImage     *image;
 @property (nonatomic)         IVZoomMode   mode;
-@property (nonatomic)         NSUInteger   generation;   /* bumped per load / close */
+@property (nonatomic, strong) IVGeneration *generation;   /* bumped per load / close */
 @property (nonatomic, strong) dispatch_queue_t decodeQueue;
 @property (nonatomic, strong) id           keyMonitor;
 @property (nonatomic)         CGFloat      shownMagnification;   /* what the toolbar and filters reflect */
@@ -639,6 +648,7 @@ typedef NS_ENUM(NSInteger, IVZoomMode) {
     if (self) {
         self.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         self.wantsLayer = YES;
+        _generation = [[IVGeneration alloc] init];
         _decodeQueue = dispatch_queue_create("image-wlx.decode", DISPATCH_QUEUE_SERIAL);
 
         NSRect body = NSMakeRect(0, 0, NSWidth(frame), MAX(0, NSHeight(frame) - kToolbarHeight));
@@ -764,7 +774,7 @@ static NSButton *ToolButton(NSString *symbol, NSString *fallback, NSString *tip,
                                                  weight:NSFontWeightRegular];
     info.textColor = [NSColor secondaryLabelColor];
     info.lineBreakMode = NSLineBreakByTruncatingMiddle;
-    info.selectable = YES;
+    info.selectable = NO;    /* a click must not move focus off the image; the tooltip has the text */
     [info setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow - 1
                                    forOrientation:NSLayoutConstraintOrientationHorizontal];
     self.infoLabel = info;
@@ -817,8 +827,9 @@ static NSButton *ToolButton(NSString *symbol, NSString *fallback, NSString *tip,
  * once; raster pixels are decoded off the main thread and arrive later, unless
  * another file has been loaded by then. */
 - (void)showImage:(IVImage *)image flags:(int)flags {
-    self.generation++;
-    NSUInteger gen = self.generation;
+    [self.spinner stopAnimation:nil];   /* a previous file's slow decode may have started it */
+    IVGeneration *generation = self.generation;
+    NSUInteger gen = ++generation.value;
     self.image = image;
     self.mode = [IVView modeForFlags:flags];
 
@@ -838,18 +849,18 @@ static NSButton *ToolButton(NSString *symbol, NSString *fallback, NSString *tip,
     /* Large decodes (RAW, big TIFF) show a spinner, small ones don't flash it. */
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{
-        if (gen == self.generation && !self.canvas.raster.cgImage && self.messageLabel.hidden)
+        if (gen == generation.value && !self.canvas.raster.cgImage && self.messageLabel.hidden)
             [self.spinner startAnimation:nil];
     });
 
     __weak IVView *weakSelf = self;
     dispatch_async(self.decodeQueue, ^{
-        if (gen != weakSelf.generation) return;   /* superseded before it started */
+        if (gen != generation.value) return;   /* superseded before it started */
         double firstDelay = 0.1;
         id cg = image.frameCount > 1 ? [image decodeFrame:0 delay:&firstDelay] : [image decodeDisplayImage];
         dispatch_async(dispatch_get_main_queue(), ^{
             IVView *me = weakSelf;
-            if (!me || gen != me.generation) return;
+            if (!me || gen != generation.value) return;
             [me.spinner stopAnimation:nil];
             if (!cg) {
                 [me showMessage:@"This image could not be decoded."];
@@ -881,15 +892,16 @@ static NSButton *ToolButton(NSString *symbol, NSString *fallback, NSString *tip,
     if (next == 0 && image.loopCount > 0 && loop >= image.loopCount) return;   /* finished */
 
     __weak IVView *weakSelf = self;
+    IVGeneration *generation = self.generation;
     dispatch_async(self.decodeQueue, ^{
-        if (gen != weakSelf.generation) return;
+        if (gen != generation.value) return;
         double nextDelay = 0.1;
         id frame = [image decodeFrame:next delay:&nextDelay];
         double wait = MAX(0, due - CACurrentMediaTime());
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(wait * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
             IVView *me = weakSelf;
-            if (!me || gen != me.generation || !frame) return;
+            if (!me || gen != generation.value || !frame) return;
             me.canvas.raster.cgImage = frame;
             [me animateFrom:next delay:nextDelay loop:nextLoop generation:gen];
         });
@@ -978,8 +990,7 @@ static const CGFloat kSteps[] = { 0.01, 0.02, 0.03, 0.05, 0.08, 0.1, 0.125, 0.16
 - (void)toggleFitAtPoint:(NSPoint)docPoint {
     if (!self.image) return;
     CGFloat fit = [self fitMagnification];
-    BOOL atFit = fabs(self.scroll.magnification - fit) < 0.005 ||
-                 (self.mode == IVZoomFit || self.mode == IVZoomFitLarge);
+    BOOL atFit = fabs(self.scroll.magnification - fit) < 0.005;
     if (atFit && fabs(fit - 1) > 0.005) {
         self.mode = IVZoomActual;
         [self setMagnification:1 centeredAt:docPoint];
@@ -1037,11 +1048,19 @@ static const CGFloat kSteps[] = { 0.01, 0.02, 0.03, 0.05, 0.08, 0.1, 0.125, 0.16
 }
 
 - (void)resizeSubviewsWithOldSize:(NSSize)old {
+    NSPoint center = self.image ? [self visibleCenter] : NSZeroPoint;
     [super resizeSubviewsWithOldSize:old];
     if (!self.image) return;
     [self updateLimits];
-    if (self.mode == IVZoomManual) [self magnificationDidChange];
-    else [self applyMode];
+    /* Fit modes re-fit; at actual size or a chosen zoom the part of the
+     * image the user panned to stays in the middle of the window. */
+    if (self.mode == IVZoomFit || self.mode == IVZoomFitLarge) { [self applyMode]; return; }
+    NSClipView *clip = self.scroll.contentView;
+    NSRect b = clip.bounds;
+    b.origin = NSMakePoint(center.x - NSWidth(b) / 2, center.y - NSHeight(b) / 2);
+    [clip scrollToPoint:[clip constrainBoundsRect:b].origin];
+    [self.scroll reflectScrolledClipView:clip];
+    [self magnificationDidChange];
 }
 
 /* Zoom shortcuts. Cmd+= and Cmd+- are bound on Double Commander's Viewer form
@@ -1097,7 +1116,9 @@ static const CGFloat kSteps[] = { 0.01, 0.02, 0.03, 0.05, 0.08, 0.1, 0.125, 0.16
     __block id rendered = nil;
     if (im.kind == IVKindVector) {
         WithMaskedFP(^{
-            CGFloat scale = MAX(self.window.backingScaleFactor, 2);
+            CGFloat w = MAX(im.size.width, 1), h = MAX(im.size.height, 1);
+            CGFloat scale = MIN(MAX(self.window.backingScaleFactor, 2),
+                                MIN(kMaxDisplaySide / MAX(w, h), sqrt(kMaxDisplayPixels / (w * h))));
             NSBitmapImageRep *rep = [[NSBitmapImageRep alloc]
                 initWithBitmapDataPlanes:NULL
                               pixelsWide:(NSInteger)ceil(im.size.width * scale)
@@ -1120,7 +1141,11 @@ static const CGFloat kSteps[] = { 0.01, 0.02, 0.03, 0.05, 0.08, 0.1, 0.125, 0.16
     WithMaskedFP(^{
         NSBitmapImageRep *rep = [[NSBitmapImageRep alloc] initWithCGImage:cg];
         png = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
-        tiff = [rep TIFFRepresentation];
+        /* TIFF only for apps that still want it, and only while it stays a
+         * sane size: an uncompressed 64 MP bitmap is 256 MB, which the
+         * pasteboard refuses, failing the whole copy. */
+        if (rep.pixelsWide * rep.pixelsHigh <= 16 * 1024 * 1024)
+            tiff = [rep TIFFRepresentationUsingCompression:NSTIFFCompressionLZW factor:0];
     });
     /* Where the file itself is what an app pasting it wants — the SVG source,
      * an animation, a camera format's original bytes, or a PNG exactly as it
@@ -1205,7 +1230,8 @@ static const CGFloat kSteps[] = { 0.01, 0.02, 0.03, 0.05, 0.08, 0.1, 0.125, 0.16
 }
 
 - (void)close {
-    self.generation++;   /* ends decoding hand-offs and the animation loop */
+    self.generation.value++;   /* ends decoding hand-offs and the animation loop */
+    [self.spinner stopAnimation:nil];
     [self removeKeyMonitor];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [self removeFromSuperview];
