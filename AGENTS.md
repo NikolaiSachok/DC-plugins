@@ -115,6 +115,14 @@ not as a bug to rediscover:
 3. **That harness is a regression net, not proof.** The first Esc fix passed a mock
    and still failed in the app. Before shipping, press Esc in the real Double
    Commander with the plugin registered.
+4. **Esc is one case of a wider rule: every key the plugin does not use belongs to
+   DC's viewer.** N / P and Alt+→ / Alt+← (next / previous file), Q, the view-mode
+   digits all go through the same `-sendEvent:` dispatch, so a focused plugin view
+   that consumes them breaks them silently — the File → Next menu item still works,
+   which is the tell. An AppKit view (image-wlx) hands every unused key to DC the
+   same way and takes focus back with `dispatch_async` — after DC's handling, or
+   during it if DC spins a nested run loop, so never rely on strict ordering;
+   `test/keys_verify.m` covers it.
 
 ### Cmd+C / Cmd+A go through `ListSendCommand`, not the web view
 Same shape as the Esc lesson, and it had bitten **both** web-view listers before it

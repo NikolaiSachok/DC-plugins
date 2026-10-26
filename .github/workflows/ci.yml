@@ -108,18 +108,19 @@ jobs:
 
       # The image viewer is AppKit only (no WebKit), so its harnesses run here
       # against generated samples: formats, fall-through, opening zoom, zoom
-      # keys, mouse, animation, FP traps, Esc, focus and copy.
+      # keys, mouse, animation, FP traps, Esc, DC's viewer keys, focus and copy.
       - name: Run image-wlx harnesses (real artifact)
         working-directory: image-wlx
         run: |
           clang -fobjc-arc -Wall -framework Cocoa -framework ImageIO \
             -framework UniformTypeIdentifiers -lz -o build/make_samples test/make_samples.m
           ./build/make_samples build/samples
-          for t in test_host esc_verify focus_verify copy_verify; do
+          for t in test_host esc_verify keys_verify focus_verify copy_verify; do
             clang -fobjc-arc -Wall -Wextra -framework Cocoa -o build/$t test/$t.m
           done
           ./build/test_host build/ImageView.wlx build/samples
           ./build/esc_verify build/ImageView.wlx build/samples/photo.jpg
+          ./build/keys_verify build/ImageView.wlx build/samples/photo.jpg build/samples/wide.png
           ./build/focus_verify build/ImageView.wlx build/samples/photo.jpg
           ./build/copy_verify build/ImageView.wlx build/samples
 
