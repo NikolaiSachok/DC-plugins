@@ -115,8 +115,15 @@ error.
 - **Zoom** is `NSScrollView` magnification, with a clip view that centers an
   image smaller than the window. Raster images are a layer whose contents the
   GPU scales; past 200% they are drawn without interpolation. SVG is drawn by
-  AppKit's CoreSVG-backed `NSImage` on every redraw, so it is re-rasterized at
-  the current magnification.
+  CoreSVG's image rep straight into the view on every redraw, so it is
+  re-rasterized at the current magnification, and only the part being
+  repainted is drawn. (Drawn through `NSImage` instead, CoreSVG renders the
+  whole document at the zoomed size first: panning a large diagram at 400%
+  took seconds per step, against tens of milliseconds now.)
+- **SVG compatibility.** CoreSVG does not know the CSS `transparent` keyword
+  and paints it black, so `fill="transparent"` / `fill: transparent` (as Miro
+  and other diagram tools export connectors) is read as `none`. Cmd+C still
+  copies the file's original source.
 - **Cmd+= / Cmd+-** are bound on DC's own Viewer form and never reach the
   plugin's view, so a local event monitor takes them first — only while the
   image has keyboard focus, so Quick View's file panel keeps its keys.

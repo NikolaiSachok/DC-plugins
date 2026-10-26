@@ -157,7 +157,7 @@ typedef NS_ENUM(NSInteger, IVKind) { IVKindRaster, IVKindVector };
 @property (nonatomic)         NSSize    pixelSize;    /* stored pixel size, for the toolbar */
 @property (nonatomic)         unsigned long long fileSize;
 @property (nonatomic)         BOOL      hasAlpha;
-@property (nonatomic, strong) NSImage  *vector;       /* the SVG */
+@property (nonatomic, strong) NSImageRep *vector;     /* the SVG */
 @property (nonatomic, strong) NSData   *vectorData;   /* the SVG source, for Copy */
 @property (nonatomic, strong) id        source;       /* CGImageSourceRef */
 @property (nonatomic)         size_t    index;        /* which image in the source to show */
@@ -185,23 +185,51 @@ typedef NS_ENUM(NSInteger, IVKind) { IVKindRaster, IVKindVector };
     return image;
 }
 
+/* CoreSVG predates SVG 2's use of CSS colours and does not know the
+ * `transparent` keyword; it falls back to the default black fill, so a
+ * connector drawn as `fill="transparent"` (Miro and other diagram tools
+ * export them that way) becomes a solid black wedge. Paint that is
+ * `transparent` means no paint, which CoreSVG knows as `none`. */
+static NSData *CoreSVGCompatible(NSData *svg) {
+    static const char kKeyword[] = "transparent";
+    if (!memmem(svg.bytes, svg.length, kKeyword, sizeof kKeyword - 1)) return svg;
+    NSString *text = [[NSString alloc] initWithData:svg encoding:NSUTF8StringEncoding];
+    if (!text) return svg;
+    static NSRegularExpression *attr, *css;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        attr = [NSRegularExpression regularExpressionWithPattern:
+                @"\\b(fill|stroke)(\\s*=\\s*)([\"'])\\s*transparent\\s*\\3"
+                options:NSRegularExpressionCaseInsensitive error:NULL];
+        css = [NSRegularExpression regularExpressionWithPattern:
+               @"\\b(fill|stroke)(\\s*:\\s*)transparent\\b"
+               options:NSRegularExpressionCaseInsensitive error:NULL];
+    });
+    NSMutableString *out = [text mutableCopy];
+    [attr replaceMatchesInString:out options:0 range:NSMakeRange(0, out.length) withTemplate:@"$1$2$3none$3"];
+    [css replaceMatchesInString:out options:0 range:NSMakeRange(0, out.length) withTemplate:@"$1$2none"];
+    return [out dataUsingEncoding:NSUTF8StringEncoding];
+}
+
 + (instancetype)vectorAtPath:(NSString *)path {
     NSData *data = [NSData dataWithContentsOfFile:path options:NSDataReadingMappedIfSafe error:NULL];
     if (!data) return nil;
     NSData *plain = Gunzip(data) ?: data;
-    NSImage *svg = [[NSImage alloc] initWithData:plain];
-    BOOL isVector = NO;
+    NSImage *svg = [[NSImage alloc] initWithData:CoreSVGCompatible(plain)];
+    /* Keep the SVG's own image rep, not the NSImage. Drawn through NSImage,
+     * CoreSVG renders the whole document at the zoomed resolution and only
+     * then clips to what is being repainted, so panning a large diagram at
+     * 400% took seconds per step. The rep, drawn under the view's transform
+     * and clip, draws only what is exposed and stays sharp at any zoom. */
+    NSImageRep *vector = nil;
     for (NSImageRep *rep in svg.representations)
-        if (![rep isKindOfClass:[NSBitmapImageRep class]]) isVector = YES;
-    if (!isVector || svg.size.width < 1 || svg.size.height < 1) return nil;
-    /* Never let NSImage substitute a cached bitmap: each draw goes back to the
-     * vector source, which is what keeps it sharp when magnified. */
-    svg.cacheMode = NSImageCacheNever;
+        if (![rep isKindOfClass:[NSBitmapImageRep class]]) { vector = rep; break; }
+    if (!vector || svg.size.width < 1 || svg.size.height < 1) return nil;
 
     IVImage *image = [[IVImage alloc] init];
     image.kind = IVKindVector;
     image.format = @"SVG";
-    image.vector = svg;
+    image.vector = vector;
     image.vectorData = plain;
     image.size = svg.size;
     image.pixelSize = svg.size;
@@ -370,7 +398,7 @@ typedef NS_ENUM(NSInteger, IVKind) { IVKindRaster, IVKindVector };
  */
 @interface IVCanvas : NSView
 @property (nonatomic, weak)   IVView       *owner;
-@property (nonatomic, strong) NSImage      *vector;
+@property (nonatomic, strong) NSImageRep   *vector;
 @property (nonatomic)         BOOL          checkerboard;
 @property (nonatomic, strong) IVRasterView *raster;
 @property (nonatomic)         NSPoint       dragStart;    /* window coords */
@@ -419,9 +447,14 @@ typedef NS_ENUM(NSInteger, IVKind) { IVKindRaster, IVKindVector };
 - (void)drawRect:(NSRect)dirty {
     WithMaskedFP(^{
         if (self.checkerboard) [self drawCheckerboardIn:dirty];
-        [self.vector drawInRect:self.bounds fromRect:NSZeroRect
-                      operation:NSCompositingOperationSourceOver
-                       fraction:1 respectFlipped:YES hints:nil];
+        if (!self.vector) return;
+        /* An image rep draws bottom-up; the canvas is flipped. */
+        CGContextRef c = NSGraphicsContext.currentContext.CGContext;
+        CGContextSaveGState(c);
+        CGContextTranslateCTM(c, 0, NSHeight(self.bounds));
+        CGContextScaleCTM(c, 1, -1);
+        [self.vector drawInRect:NSMakeRect(0, 0, NSWidth(self.bounds), NSHeight(self.bounds))];
+        CGContextRestoreGState(c);
     });
 }
 

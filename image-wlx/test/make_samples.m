@@ -136,6 +136,22 @@ int main(int argc, char **argv) { @autoreleasepool {
     gzclose(gz);
     printf("  %-16s ok\n", "edge.svgz");
 
+    /* Red on top, blue below: catches an upside-down draw. */
+    [@"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20\" height=\"20\">"
+     @"<rect width=\"20\" height=\"10\" fill=\"#f00\"/>"
+     @"<rect y=\"10\" width=\"20\" height=\"10\" fill=\"#00f\"/></svg>\n"
+        writeToFile:P(@"updown.svg") atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+    printf("  %-16s ok\n", "updown.svg");
+
+    /* Outlines painted `transparent` (CSS keyword) as diagram tools export
+     * them: the shapes' insides must stay white, not turn black. */
+    [@"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"20\">"
+     @"<rect width=\"40\" height=\"20\" fill=\"#fff\"/>"
+     @"<path d=\"M2 2 L18 2 L10 18 Z\" stroke=\"#333\" stroke-width=\"1\" fill=\"transparent\"/>"
+     @"<path d=\"M22 2 L38 2 L30 18 Z\" style=\"stroke:#333;fill: transparent\"/></svg>\n"
+        writeToFile:P(@"transparent.svg") atomically:YES encoding:NSUTF8StringEncoding error:NULL];
+    printf("  %-16s ok\n", "transparent.svg");
+
     /* An SVG whose stated size is far past the display caps: copying it must
      * rasterize within them. */
     [@"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"20000\" height=\"20000\">"

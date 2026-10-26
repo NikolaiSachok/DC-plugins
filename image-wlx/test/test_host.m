@@ -416,6 +416,26 @@ static void TestVectorSharpness(void) {
           [NSString stringWithFormat:@"edge is crisp: %ld grey pixel(s) across a %.0f px/pt edge", (long)grey, scale]);
     (void)b;
     Close(p);
+
+    p = Load(@"updown.svg", kFitLarge);
+    NSRect top = NSMakeRect(5, 2, 10, 4), bottom = NSMakeRect(5, 14, 10, 4);   /* flipped: y grows down */
+    NSColor *(^sample)(NSView *, NSRect) = ^NSColor *(NSView *canvas, NSRect area) {
+        NSBitmapImageRep *r = [canvas bitmapImageRepForCachingDisplayInRect:area];
+        [canvas cacheDisplayInRect:area toBitmapImageRep:r];
+        return [[r colorAtX:r.pixelsWide / 2 y:r.pixelsHigh / 2] colorUsingColorSpace:NSColorSpace.sRGBColorSpace];
+    };
+    NSColor *t = sample(p.canvas, top), *u = sample(p.canvas, bottom);
+    check(t.redComponent > 0.9 && t.blueComponent < 0.1 && u.blueComponent > 0.9 && u.redComponent < 0.1,
+          @"drawn the right way up (red top, blue bottom)");
+    Close(p);
+
+    p = Load(@"transparent.svg", kFitLarge);
+    NSColor *attrFill = sample(p.canvas, NSMakeRect(9, 5, 2, 2)), *cssFill = sample(p.canvas, NSMakeRect(29, 5, 2, 2));
+    BOOL (^white)(NSColor *) = ^BOOL(NSColor *c) {
+        return c.redComponent > 0.9 && c.greenComponent > 0.9 && c.blueComponent > 0.9;
+    };
+    check(white(attrFill) && white(cssFill), @"fill=\"transparent\" paints nothing (it was black)");
+    Close(p);
 }
 
 /* Free Pascal enables the invalid-operation, divide-by-zero and overflow

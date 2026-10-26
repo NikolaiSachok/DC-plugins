@@ -23,7 +23,10 @@ fi
 
 echo "==> Installing files to $DEST"
 mkdir -p "$DEST"
-cp -f "$WLX" "$DEST/ImageView.wlx"
+# Replace, never overwrite in place: a running Double Commander has the old
+# binary mapped, and rewriting that file under it can crash it.
+cp -f "$WLX" "$DEST/.ImageView.wlx.new"
+mv -f "$DEST/.ImageView.wlx.new" "$DEST/ImageView.wlx"
 
 if pgrep -f "MacOS/doublecmd" >/dev/null; then
     echo "!! Double Commander is running. Quit it, then re-run this script to register."
