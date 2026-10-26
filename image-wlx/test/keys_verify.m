@@ -5,8 +5,10 @@
  * (cm_LoadNextFile / cm_LoadPrevFile), Q closes the viewer. LCL handles them
  * through NSApplication's event dispatch, so the plugin re-posts them to DC's
  * view. Afterwards the image must have keyboard focus again, so the arrows
- * keep panning the next image. The keys the plugin does use (plain arrows,
- * the zoom keys) must stay with it.
+ * keep panning the next image — unless DC moved focus to a control of its
+ * own (Tab to the file panel) or a dialog took the key window (F7, Find).
+ * The keys the plugin does use (plain arrows, Cmd+Up / Cmd+Down, the zoom
+ * keys) must stay with it.
  *
  * The stand-in for DC's viewer panel records each key it receives, and on N
  * or P calls ListLoadNext, as cm_LoadNextFile does.
@@ -28,6 +30,10 @@ static ListLoadNext_t ListLoadNext;
 static HWND gPlugin;
 static const char *gNext;
 static int gLoads = 0;
+
+@class HostWindow;
+static HostWindow *gWin;
+static NSView *gPanel;
 
 static void check(BOOL cond, const char *what) {
     printf("  %-60s %s\n", what, cond ? "ok" : "FAILED");
@@ -54,7 +60,8 @@ static void After(double seconds, void (^block)(void)) {
 - (BOOL)isKeyWindow { return self.key; }
 @end
 
-/* DC's viewer panel: the parent ListLoad gets. */
+/* DC's viewer panel: the parent ListLoad gets. Tab moves focus to a control
+ * of DC's own; F7 opens a dialog, so the viewer window stops being key. */
 @interface FakeDC : NSView
 @property (nonatomic, strong) NSMutableArray<NSEvent *> *keys;
 @end
@@ -67,8 +74,12 @@ static void After(double seconds, void (^block)(void)) {
     BOOL next = e.keyCode == 45 /* N */ || (alt && e.keyCode == 124);
     BOOL prev = e.keyCode == 35 /* P */ || (alt && e.keyCode == 123);
     if ((next || prev) && ListLoadNext(gPlugin, gPlugin, (char *)gNext, 0) == 0) gLoads++;
+    if (e.keyCode == 48 /* Tab */) [self.window makeFirstResponder:gPanel];
+    if (e.keyCode == 98 /* F7 */) gWin.key = NO;
 }
 @end
+
+typedef enum { FocusImage, FocusPanel, FocusDC } Focus;
 
 typedef struct {
     unsigned short code;
@@ -77,26 +88,39 @@ typedef struct {
     BOOL toDC;      /* the key belongs to DC's viewer */
     BOOL loads;     /* DC answers it with ListLoadNext */
     const char *name;
+    Focus focus;    /* who has keyboard focus afterwards */
 } Case;
 
 #define ARROW (NSEventModifierFlagFunction | NSEventModifierFlagNumericPad)
 static const Case kCases[] = {
-    { 45,  'n', 0, YES, YES, "N" },
-    { 35,  'p', 0, YES, YES, "P" },
-    { 124, NSRightArrowFunctionKey, ARROW | NSEventModifierFlagOption, YES, YES, "Alt+Right" },
-    { 123, NSLeftArrowFunctionKey,  ARROW | NSEventModifierFlagOption, YES, YES, "Alt+Left" },
-    { 18,  '1', 0, YES, NO, "1 (view as text)" },
-    { 124, NSRightArrowFunctionKey, ARROW, NO, NO, "Right" },
-    { 125, NSDownArrowFunctionKey,  ARROW, NO, NO, "Down" },
-    { 24,  '=', 0, NO, NO, "= (zoom in)" },
-    { 12,  'q', 0, YES, NO, "Q" },
+    { 45,  'n', 0, YES, YES, "N", FocusImage },
+    { 35,  'p', 0, YES, YES, "P", FocusImage },
+    { 124, NSRightArrowFunctionKey, ARROW | NSEventModifierFlagOption, YES, YES, "Alt+Right", FocusImage },
+    { 123, NSLeftArrowFunctionKey,  ARROW | NSEventModifierFlagOption, YES, YES, "Alt+Left", FocusImage },
+    { 18,  '1', 0, YES, NO, "1 (view as text)", FocusImage },
+    { 124, NSRightArrowFunctionKey, ARROW | NSEventModifierFlagShift, YES, NO, "Shift+Right", FocusImage },
+    { 124, NSRightArrowFunctionKey, ARROW, NO, NO, "Right", FocusImage },
+    { 125, NSDownArrowFunctionKey,  ARROW, NO, NO, "Down", FocusImage },
+    { 126, NSUpArrowFunctionKey,    ARROW | NSEventModifierFlagCommand, NO, NO, "Cmd+Up (top)", FocusImage },
+    { 125, NSDownArrowFunctionKey,  ARROW | NSEventModifierFlagCommand, NO, NO, "Cmd+Down (bottom)", FocusImage },
+    { 115, NSHomeFunctionKey, NSEventModifierFlagFunction, NO, NO, "Home (top)", FocusImage },
+    { 119, NSEndFunctionKey,  NSEventModifierFlagFunction, NO, NO, "End (bottom)", FocusImage },
+    { 24,  '=', 0, NO, NO, "= (zoom in)", FocusImage },
+    { 48,  '\t', 0, YES, NO, "Tab (DC focuses its file panel)", FocusPanel },
+    { 98,  NSF7FunctionKey, NSEventModifierFlagFunction, YES, NO, "F7 (DC opens a dialog)", FocusDC },
+    { 12,  'q', 0, YES, NO, "Q", FocusImage },
 };
 static const int kCount = (int)(sizeof kCases / sizeof kCases[0]);
 
-static HostWindow *gWin;
 static FakeDC *gDC;
 static NSView *gCanvas;
 static NSScrollView *gScroll;
+
+/* The clip view shows the top (-1) or the bottom (+1) edge of the image. */
+static BOOL AtEdge(int edge) {
+    NSRect b = gScroll.contentView.bounds, doc = gCanvas.frame;
+    return edge < 0 ? fabs(NSMinY(b) - NSMinY(doc)) < 0.5 : fabs(NSMaxY(b) - NSMaxY(doc)) < 0.5;
+}
 
 static void Step(int i) {
     if (i == kCount) {
@@ -109,6 +133,7 @@ static void Step(int i) {
     }
     Case c = kCases[i];
     printf("%s:\n", c.name);
+    gWin.key = YES;
     [gWin makeFirstResponder:gCanvas];
     NSUInteger seen = gDC.keys.count;
     int loads = gLoads;
@@ -122,7 +147,7 @@ static void Step(int i) {
     After(0.3, ^{
         NSEvent *got = gDC.keys.count > seen ? gDC.keys.lastObject : nil;
         if (c.toDC) {
-            check(got != nil, "reaches DC's viewer");
+            check(gDC.keys.count == seen + 1, "reaches DC's viewer, once");
             check(got.keyCode == c.code && [got.characters isEqualToString:chars] &&
                   (got.modifierFlags & NSEventModifierFlagOption) == (c.mods & NSEventModifierFlagOption),
                   "arrives unchanged");
@@ -130,9 +155,16 @@ static void Step(int i) {
         } else {
             check(got == nil, "stays with the image");
             if (c.code == 24) check(gScroll.magnification > mag, "zooms in");
+            else if (c.code == 115 || c.code == 126) check(AtEdge(-1), "scrolls to the top");
+            else if (c.code == 119 || (c.code == 125 && c.mods & NSEventModifierFlagCommand))
+                check(AtEdge(+1), "scrolls to the bottom");
             else check(!NSEqualPoints(gScroll.contentView.bounds.origin, origin), "scrolls the image");
         }
-        check(gWin.firstResponder == gCanvas, "the image has keyboard focus afterwards");
+        switch (c.focus) {
+            case FocusImage: check(gWin.firstResponder == gCanvas, "the image has keyboard focus afterwards"); break;
+            case FocusPanel: check(gWin.firstResponder == gPanel, "DC's file panel keeps the focus it took"); break;
+            case FocusDC:    check(gWin.firstResponder == gDC, "focus is not taken back behind the dialog"); break;
+        }
         Step(i + 1);
     });
 }
@@ -160,6 +192,8 @@ int main(int argc, char **argv) { @autoreleasepool {
     FakeDC *dc = [[FakeDC alloc] initWithFrame:form.bounds];
     dc.keys = [NSMutableArray array];
     [form addSubview:dc];
+    gPanel = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 10, 10)];
+    [form addSubview:gPanel positioned:NSWindowBelow relativeTo:dc];
     [win orderFront:nil];
     win.key = YES;
 

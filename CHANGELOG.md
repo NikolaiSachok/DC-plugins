@@ -14,6 +14,10 @@ independently and tagged below.
   viewer, the digits switch view mode. The image used to swallow every key it
   did not use itself. After the next file loads, the image has keyboard focus
   again, so the arrows pan it straight away.
+- **image-wlx:** End and Cmd+↓ scroll to the bottom of the image (they went to
+  the top), and Home / End no longer depend on the system's text key bindings
+  (a `DefaultKeyBinding.dict` that maps them to line start / end left them
+  dead). Cmd+↑ goes to the top, Shift+Space pages up.
 
 ## image-wlx 0.1.0 — 2026-10-26
 

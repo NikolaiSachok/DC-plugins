@@ -120,8 +120,9 @@ not as a bug to rediscover:
    digits all go through the same `-sendEvent:` dispatch, so a focused plugin view
    that consumes them breaks them silently — the File → Next menu item still works,
    which is the tell. An AppKit view (image-wlx) hands every unused key to DC the
-   same way and takes focus back once DC has handled it (`dispatch_async`; the
-   re-posted event is dispatched first); `test/keys_verify.m` covers it.
+   same way and takes focus back with `dispatch_async` — after DC's handling, or
+   during it if DC spins a nested run loop, so never rely on strict ordering;
+   `test/keys_verify.m` covers it.
 
 ### Cmd+C / Cmd+A go through `ListSendCommand`, not the web view
 Same shape as the Esc lesson, and it had bitten **both** web-view listers before it

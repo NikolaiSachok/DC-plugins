@@ -79,7 +79,8 @@ Press **F3** on an image, or turn on Quick View (**Ctrl+Q**).
 | Actual size | Cmd+0, toolbar Actual Size button |
 | Fit to window | Cmd+9, toolbar Zoom to Fit button |
 | Toggle Fit ↔ 100% | double-click, two-finger double tap |
-| Pan | drag, scroll, arrows, PgUp / PgDn, Home / End, Space |
+| Pan | drag, scroll, arrows, PgUp / PgDn, Space / Shift+Space |
+| Top / bottom | Home / End, Cmd+↑ / Cmd+↓ |
 | Copy image | Cmd+C |
 | Next / previous file | N / P, Alt+→ / Alt+← (F3 viewer) |
 | Close viewer | Esc, Q |
@@ -143,8 +144,9 @@ error.
 
 ### DC's viewer keys reach DC
 
-The image keeps the zoom keys and the unmodified arrows, PgUp / PgDn,
-Home / End and Space. For any other key (Esc, Q, N, P, Alt+arrows, the view
+The image keeps the zoom keys and the keys that scroll: the unmodified arrows,
+PgUp / PgDn, Home / End and Space, Shift+Space, and Cmd+↑ / Cmd+↓. For any
+other key (Esc, Q, N, P, Alt+arrows, the view
 mode digits) the canvas moves focus to DC's view and re-posts the key through
 `NSApplication`, which is where LCL handles its shortcuts. Once DC has handled
 it, the image takes focus back — unless DC moved focus to a control of its own
