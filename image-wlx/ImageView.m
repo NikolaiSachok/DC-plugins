@@ -1342,9 +1342,14 @@ static const CGFloat kSteps[] = { 0.01, 0.02, 0.03, 0.05, 0.08, 0.1, 0.125, 0.16
     [self layoutChrome];
     if (!self.image) return;
     [self updateLimits];
-    /* Fit modes re-fit; at actual size or a chosen zoom the part of the
-     * image the user panned to stays in the middle of the window. */
-    if (self.mode == IVZoomFit || self.mode == IVZoomFitLarge) { [self applyMode]; return; }
+    /* Images re-center when fitted. A continuous PDF must keep its reading
+     * position while the fitted scale follows the new viewport size. */
+    if (self.mode == IVZoomFit || self.mode == IVZoomFitLarge) {
+        if (self.image.kind != IVKindPDF) { [self applyMode]; return; }
+        CGFloat mag = [self fitMagnification];
+        if (self.mode == IVZoomFitLarge) mag = MIN(1, mag);
+        [self setMagnification:mag centeredAt:center];
+    }
     NSClipView *clip = self.scroll.contentView;
     NSRect b = clip.bounds;
     b.origin = NSMakePoint(center.x - NSWidth(b) / 2, center.y - NSHeight(b) / 2);

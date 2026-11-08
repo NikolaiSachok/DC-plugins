@@ -82,6 +82,13 @@ int main(int argc,char **argv) { @autoreleasepool {
     check(load(NULL,(char*)bad.fileSystemRepresentation,0)==NULL,"invalid PDF falls through");
     check(next(NULL,handle,(char*)bad.fileSystemRepresentation,0)==1,"failed navigation preserves current PDF");
     check(next(NULL,handle,(char*)path.fileSystemRepresentation,2)==0,"next PDF reuses view");
+    for (int flags=2; flags<=34; flags+=32) {
+        next(NULL,handle,(char*)path.fileSystemRepresentation,flags);
+        key(canvas,119,NSEndFunctionKey,NSEventModifierFlagFunction);
+        [view setFrameSize:NSMakeSize(850,650)];
+        check(NSMinY(scroll.contentView.bounds)>1000,"fit resize preserves PDF reading position");
+        [view setFrameSize:NSMakeSize(800,500)];
+    }
     check(next(NULL,handle,(char*)path.fileSystemRepresentation,0)==0 &&
         fabs(NSMinY(scroll.contentView.bounds))<1,"actual size also opens at top");
     NSString *png=[dir stringByAppendingPathComponent:@"first-page.png"];

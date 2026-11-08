@@ -19,6 +19,7 @@ independently and tagged below.
   image dragging is unchanged. No OCR is performed on image-only scans.
 
 ### Fixed
+- **image-wlx 0.2.0:** Resizing a fitted PDF preserves the current reading position.
 - **image-wlx 0.2.0:** PDF drag selection uses native point endpoints. Mixing
   PDFKit hit-test indexes with selection-range indexes could highlight and copy
   a different table cell in documents with ligatures or inferred spacing.
