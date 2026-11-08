@@ -12,7 +12,7 @@ mkdir -p build
 echo "==> Compiling and linking $OUT"
 clang -dynamiclib $ARCHS $COMMON -fobjc-arc -Wall -Wextra \
   -framework Cocoa -framework ImageIO -framework QuartzCore \
-  -framework UniformTypeIdentifiers \
+  -framework PDFKit -framework UniformTypeIdentifiers \
   -lz \
   -o "$OUT" ImageView.m
 

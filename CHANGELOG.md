@@ -6,6 +6,24 @@ independently and tagged below.
 
 ## [Unreleased]
 
+### Added
+- **image-wlx 0.2.0:** PDF viewing with continuous pages and the image viewer's
+  zoom and pan controls: PgUp/PgDn, arrows, Home/End, Space, pinch, Cmd/Option+scroll,
+  Cmd+= / Cmd+-, and the toolbar. PDF pages remain vector-sharp and honor crop
+  boxes and rotation. Fit opens at the first page; Cmd+C copies the original PDF.
+  Locked or invalid PDFs fall through to the next viewer. Re-run the installer
+  after upgrading to register PDF support ahead of MacPreview.
+- **image-wlx 0.2.0:** Select and copy PDF text with drag selection, word/line
+  selection by double/triple-click, Cmd+C and Cmd+A. Selection follows rotated
+  and cropped pages, spans pages, and survives zoom. Option-drag pans PDFs;
+  image dragging is unchanged. No OCR is performed on image-only scans.
+
+### Fixed
+- **image-wlx 0.2.0:** Resizing a fitted PDF preserves the current reading position.
+- **image-wlx 0.2.0:** PDF drag selection uses native point endpoints. Mixing
+  PDFKit hit-test indexes with selection-range indexes could highlight and copy
+  a different table cell in documents with ligatures or inferred spacing.
+
 ## image-wlx 0.1.1 — 2026-10-26
 
 ### Fixed

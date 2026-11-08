@@ -1,6 +1,6 @@
 # ImageView — Double Commander WLX plugin (macOS)
 
-Views images in Double Commander's F3 viewer and Quick View with **zoom and pan
+Views images and PDFs in Double Commander's F3 viewer and Quick View with **zoom and pan
 that work**: pinch, Cmd+scroll or Cmd+= / Cmd+- to zoom, drag to pan, and SVG
 that stays **vector-sharp at any magnification**. It opens 60+ formats through
 the system's own decoders, and shows each image's pixel size, format and file
@@ -19,6 +19,13 @@ no pan) or its own Graphics mode, which zooms a fixed bitmap and goes soft. See
   down to half of fit.
 - **Pan** — drag with the hand cursor, scroll, or the arrows / PgUp / PgDn /
   Home / End / Space.
+- **PDF** — continuous page scrolling with the same zoom and pan controls as
+  images. Pages stay vector-sharp; rotated pages and crop boxes are respected.
+  Fit uses the first page and opens at the top. Drag to select text, double-click
+  a word or triple-click a line; Cmd+C copies selected text and Cmd+A selects
+  all document text. With no selection, Cmd+C copies the original PDF.
+  Option-drag pans. Scanned pages need an existing text layer; no OCR is run.
+  Password-locked or invalid PDFs fall through to the next viewer.
 - **SVG and SVGZ** redrawn as vectors at every zoom level — no external
   fetches, no scripts.
 - **Pixel-exact zoom** — past 200% raster pixels are drawn as crisp squares,
@@ -64,6 +71,9 @@ backs up `doublecmd.xml`, and registers the plugin **before** MacPreview, whose
 `(EXT!="")` would otherwise claim every image. Re-running it is safe. The list
 of extensions comes from the plugin itself (`ListGetDetectString`).
 
+After upgrading, run the installer again so the registered detection string
+includes PDF. Keep ImageView above MacPreview and other PDF preview plugins.
+
 ### Manual registration (alternative)
 
 *Configuration → Options → Plugins → Plugins WLX → Add*, pick `ImageView.wlx`,
@@ -71,17 +81,19 @@ and move it above MacPreview.
 
 ## Usage
 
-Press **F3** on an image, or turn on Quick View (**Ctrl+Q**).
+Press **F3** on an image or PDF, or turn on Quick View (**Ctrl+Q**).
 
 | Action | Keys / gesture |
 |---|---|
 | Zoom in / out | Cmd+= / Cmd+-, `+` / `-`, pinch, Cmd+scroll, Option+scroll |
 | Actual size | Cmd+0, toolbar Actual Size button |
 | Fit to window | Cmd+9, toolbar Zoom to Fit button |
-| Toggle Fit ↔ 100% | double-click, two-finger double tap |
+| Toggle Fit ↔ 100% | double-click (images), two-finger double tap |
 | Pan | drag, scroll, arrows, PgUp / PgDn, Space / Shift+Space |
 | Top / bottom | Home / End, Cmd+↑ / Cmd+↓ |
-| Copy image | Cmd+C |
+| Copy image / selected PDF text | Cmd+C |
+| Select all PDF text | Cmd+A |
+| Pan PDF with mouse | Option-drag |
 | Next / previous file | N / P, Alt+→ / Alt+← (F3 viewer) |
 | Close viewer | Esc, Q |
 
@@ -105,7 +117,7 @@ PNG, APNG, JPG / JPEG / JPE / JFIF, GIF, WebP, HEIC / HEIF / HIF / HEICS, AVIF,
 JXL, TIF / TIFF, BMP / DIB, ICO, CUR, ICNS, PSD, TGA, EXR, HDR, DDS, KTX, ASTC,
 PVR, JPEG 2000 (JP2, J2K, JPF, JPX, J2C), PBM / PGM / PPM / PFM, SGI, MPO,
 PICT, DICOM (DCM), camera RAW (DNG, CR2, CR3, CRW, NEF, NRW, ARW, SRF, SR2, RAF,
-ORF, RW2, RWL, RAW, PEF, SRW, IIQ, 3FR, FFF, MOS, MRW, ERF, DCR), SVG and SVGZ.
+ORF, RW2, RWL, RAW, PEF, SRW, IIQ, 3FR, FFF, MOS, MRW, ERF, DCR), SVG, SVGZ and PDF.
 
 What decodes depends on the macOS version: AVIF needs macOS 13, JPEG XL macOS 14.
 An unsupported file falls through to the next plugin rather than showing an
@@ -207,3 +219,35 @@ clang -fobjc-arc -framework Cocoa -framework QuartzCore -o build/snap_host test/
 
 These are a regression net, not proof: host key dispatch, focus and gestures
 are confirmed in a real Double Commander before a release.
+
+### PDF regression harness
+
+```sh
+clang -fobjc-arc -Wall -Wextra -framework Cocoa -o build/pdf_verify test/pdf_verify.m
+./build/pdf_verify build/ImageView.wlx build/pdf-test
+```
+
+The harness opens the real plugin, generates a multipage PDF with a rotated
+page and a nonzero page origin, and checks scrolling, zoom, rendering, copying,
+invalid-file fallback and navigation. It needs a native macOS GUI session for
+AppKit and the pasteboard. As with the image harnesses, confirm keyboard focus,
+PgUp/PgDn, zoom, N/P and Esc in real Double Commander before shipping.
+
+The PDF text harness uses PDFKit, part of macOS:
+
+```sh
+clang -fobjc-arc -Wall -Wextra -framework Cocoa -framework PDFKit \
+  -o build/pdf_text_verify test/pdf_text_verify.m
+./build/pdf_text_verify build/ImageView.wlx build/pdf-text-test
+```
+
+It checks drag and word selection on cropped and rotated pages, backward and
+cross-page selection, Select All, text copying, highlights, selection persistence
+through zoom, Option-drag panning, and clearing selection on navigation.
+`--no-clipboard` runs the event and geometry checks where pasteboard access is
+unavailable. Real-host verification must also cover Cmd+C and Cmd+A.
+
+For a document-specific regression check, append `--document /path/to/sample.pdf`.
+The harness checks word drags throughout that PDF and reports counts without
+printing document text. Generated fixtures include ligatures, whose hit-test
+indexes can differ from text-selection indexes.
