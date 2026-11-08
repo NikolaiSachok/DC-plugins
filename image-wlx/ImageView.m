@@ -1,6 +1,6 @@
 /*
  * ImageView.wlx — Double Commander Lister (WLX) plugin for macOS.
- * Shows images in the F3 viewer and Quick View with free zoom (pinch,
+ * Shows images and PDFs in the F3 viewer and Quick View with free zoom (pinch,
  * Cmd+scroll, keyboard, toolbar), mouse-drag panning, and SVG that stays sharp
  * at any magnification.
  *
@@ -18,6 +18,8 @@
  *     magnification. It never runs script and never fetches an external
  *     resource, which is what makes untrusted SVG safe to show without a
  *     sanitizer.
+ *   - PDF pages are drawn with Core Graphics as a continuous vector strip.
+ *     Only visible pages are painted; they share the image zoom/pan controls.
  *   - Zoom and scrolling are NSScrollView's (allowsMagnification), the same
  *     machinery Preview uses: native pinch, momentum scrolling and
  *     zoom-around-a-point come for free.
@@ -32,12 +34,13 @@
 
 #import <Cocoa/Cocoa.h>
 #import <ImageIO/ImageIO.h>
+#import <PDFKit/PDFKit.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #include <fenv.h>
 #include <zlib.h>
 #include "listplug.h"
 
-#define IV_VERSION "0.1.1"   /* single source of truth for the plugin version */
+#define IV_VERSION "0.2.0"   /* single source of truth for the plugin version */
 
 /* Display bitmaps are capped so a 200-megapixel scan can't exhaust memory or
  * exceed the GPU's texture size: the longest side at 16384 px and the area at
@@ -63,7 +66,7 @@ static const char *kDetectString =
     "EXT=\"NRW\"|EXT=\"ARW\"|EXT=\"SRF\"|EXT=\"SR2\"|EXT=\"RAF\"|EXT=\"ORF\"|"
     "EXT=\"RW2\"|EXT=\"RWL\"|EXT=\"RAW\"|EXT=\"PEF\"|EXT=\"SRW\"|EXT=\"IIQ\"|"
     "EXT=\"3FR\"|EXT=\"FFF\"|EXT=\"MOS\"|EXT=\"MRW\"|EXT=\"ERF\"|EXT=\"DCR\"|"
-    "EXT=\"SVG\"|EXT=\"SVGZ\"";
+    "EXT=\"SVG\"|EXT=\"SVGZ\"|EXT=\"PDF\"";
 
 #pragma mark - Helpers
 
@@ -143,7 +146,7 @@ static NSUInteger LoopCount(NSDictionary *props) {
 
 #pragma mark - IVImage
 
-typedef NS_ENUM(NSInteger, IVKind) { IVKindRaster, IVKindVector };
+typedef NS_ENUM(NSInteger, IVKind) { IVKindRaster, IVKindVector, IVKindPDF };
 
 /*
  * One opened file. Built synchronously from the file's header (cheap); the
@@ -151,6 +154,10 @@ typedef NS_ENUM(NSInteger, IVKind) { IVKindRaster, IVKindVector };
  */
 @interface IVImage : NSObject
 @property (nonatomic) IVKind kind;
+@property (nonatomic, strong) PDFDocument *pdfTextDocument;
+@property (nonatomic, strong) id pdfDocument; /* owns CGPDFDocumentRef */
+@property (nonatomic, copy) NSArray<NSValue *> *pageRects; /* flipped canvas coordinates */
+@property (nonatomic) NSSize fitSize; /* first page, rather than the whole PDF strip */
 @property (nonatomic, copy)   NSString *path;
 @property (nonatomic, copy)   NSString *format;       /* "PNG", "HEIC", "SVG", ... */
 @property (nonatomic)         NSSize    size;         /* display size in points (pixels for raster, after EXIF orientation) */
@@ -174,7 +181,7 @@ typedef NS_ENUM(NSInteger, IVKind) { IVKindRaster, IVKindVector };
     __block IVImage *image = nil;
     WithMaskedFP(^{
         NSString *ext = path.pathExtension.lowercaseString;
-        image = ([ext isEqualToString:@"svg"] || [ext isEqualToString:@"svgz"])
+        image = [ext isEqualToString:@"pdf"] ? [self pdfAtPath:path] : ([ext isEqualToString:@"svg"] || [ext isEqualToString:@"svgz"])
             ? [self vectorAtPath:path] : [self rasterAtPath:path];
     });
     if (image) {
@@ -182,6 +189,50 @@ typedef NS_ENUM(NSInteger, IVKind) { IVKindRaster, IVKindVector };
         image.fileSize = [[[NSFileManager defaultManager] attributesOfItemAtPath:path error:NULL]
                              fileSize];
     }
+    return image;
+}
+
+/* Keep PDF pages as vectors, drawing only those that intersect the dirty area.
+ * Crop boxes and page rotations determine layout, just as they do in Preview.
+ * Locked, empty and invalid documents fall through to the next lister. */
++ (instancetype)pdfAtPath:(NSString *)path {
+    CGPDFDocumentRef doc = CGPDFDocumentCreateWithURL((__bridge CFURLRef)[NSURL fileURLWithPath:path]);
+    if (!doc) return nil;
+    id owned = CFBridgingRelease(doc);
+    size_t count = CGPDFDocumentGetNumberOfPages(doc);
+    if (!CGPDFDocumentIsUnlocked(doc) || !count) return nil;
+    NSMutableArray<NSValue *> *rects = [NSMutableArray array];
+    CGFloat width = 0, y = 0;
+    NSSize first = NSZeroSize;
+    for (size_t i = 1; i <= count; i++) {
+        CGPDFPageRef page = CGPDFDocumentGetPage(doc, i);
+        if (!page) return nil;
+        CGRect box = CGRectIntersection(CGPDFPageGetBoxRect(page, kCGPDFCropBox),
+                                        CGPDFPageGetBoxRect(page, kCGPDFMediaBox));
+        NSSize size = box.size;
+        int rotation = CGPDFPageGetRotationAngle(page);
+        if ((abs(rotation) % 180) == 90) size = NSMakeSize(size.height, size.width);
+        if (!isfinite(size.width) || !isfinite(size.height) ||
+            size.width <= 0 || size.height <= 0) return nil;
+        if (i == 1) first = size;
+        [rects addObject:[NSValue valueWithRect:NSMakeRect(0, y, size.width, size.height)]];
+        width = MAX(width, size.width);
+        y += size.height + 16;
+        if (!isfinite(y)) return nil;
+    }
+    for (NSUInteger i = 0; i < rects.count; i++) {
+        NSRect r = rects[i].rectValue;
+        r.origin.x = (width - r.size.width) / 2;
+        rects[i] = [NSValue valueWithRect:r];
+    }
+    IVImage *image = [[self alloc] init];
+    image.kind = IVKindPDF;
+    image.format = @"PDF";
+    image.pdfDocument = owned;
+    image.pdfTextDocument = [[PDFDocument alloc] initWithURL:[NSURL fileURLWithPath:path]];
+    image.pageRects = rects;
+    image.fitSize = first;
+    image.size = NSMakeSize(width, y - 16);
     return image;
 }
 
@@ -434,6 +485,12 @@ static NSData *CoreSVGCompatible(NSData *svg) {
  */
 @interface IVCanvas : NSView
 @property (nonatomic, weak)   IVView       *owner;
+@property (nonatomic, strong) IVImage      *pdf;
+@property (nonatomic, strong) PDFSelection *textSelection;
+@property (nonatomic, copy) NSArray<PDFSelection *> *selectionLines;
+@property (nonatomic) BOOL selectingText;
+@property (nonatomic) NSUInteger selectionStartPage;
+@property (nonatomic) NSPoint selectionStartPoint;
 @property (nonatomic, strong) NSImageRep   *vector;
 @property (nonatomic)         BOOL          checkerboard;
 @property (nonatomic, strong) IVRasterView *raster;
@@ -484,6 +541,33 @@ static NSData *CoreSVGCompatible(NSData *svg) {
 - (void)drawRect:(NSRect)dirty {
     WithMaskedFP(^{
         if (self.checkerboard) [self drawCheckerboardIn:dirty];
+        if (self.pdf) {
+            CGContextRef ctx = NSGraphicsContext.currentContext.CGContext;
+            CGPDFDocumentRef doc = (__bridge CGPDFDocumentRef)self.pdf.pdfDocument;
+            [self.pdf.pageRects enumerateObjectsUsingBlock:^(NSValue *value, NSUInteger i, BOOL *stop) {
+                NSRect r = value.rectValue;
+                if (NSMinY(r) > NSMaxY(dirty)) { *stop = YES; return; }
+                if (!NSIntersectsRect(r, dirty)) return;
+                CGContextSaveGState(ctx);
+                CGContextClipToRect(ctx, NSRectToCGRect(r));
+                [[NSColor whiteColor] setFill];
+                NSRectFill(r);
+                CGContextTranslateCTM(ctx, NSMinX(r), NSMaxY(r));
+                CGContextScaleCTM(ctx, 1, -1);
+                CGPDFPageRef page = CGPDFDocumentGetPage(doc, i + 1);
+                CGContextConcatCTM(ctx, CGPDFPageGetDrawingTransform(page, kCGPDFCropBox,
+                    CGRectMake(0, 0, r.size.width, r.size.height), 0, true));
+                CGContextDrawPDFPage(ctx, page);
+                PDFPage *textPage = [self.pdf.pdfTextDocument pageAtIndex:i];
+                CGContextSetBlendMode(ctx, kCGBlendModeMultiply);
+                CGContextSetRGBFillColor(ctx, 0.25, 0.55, 1, 0.35);
+                for (PDFSelection *line in self.selectionLines) {
+                    if ([line.pages containsObject:textPage])
+                        CGContextFillRect(ctx, NSRectToCGRect([line boundsForPage:textPage]));
+                }
+                CGContextRestoreGState(ctx);
+            }];
+        }
         if (!self.vector) return;
         /* An image rep draws bottom-up; the canvas is flipped. */
         CGContextRef c = NSGraphicsContext.currentContext.CGContext;
@@ -512,11 +596,86 @@ static NSData *CoreSVGCompatible(NSData *svg) {
             NSRectFill(NSIntersectionRect(NSMakeRect(x * sq, y * sq, sq, sq), self.bounds));
 }
 
-#pragma mark Mouse: drag to pan, double-click to toggle Fit / 100%
+#pragma mark PDF text selection
+
+- (void)setTextSelection:(PDFSelection *)selection {
+    _textSelection = selection;
+    self.selectionLines = [selection selectionsByLine];
+    self.needsDisplay = YES;
+}
+
+/* Invert the exact drawing transform: PDF text coordinates must continue to
+ * match the painted page after cropping, rotation, magnification and panning.
+ * A drag can cross gaps or leave the viewport, so use the nearest page there. */
+- (BOOL)pdfPoint:(NSPoint)point page:(NSUInteger *)pageIndex location:(NSPoint *)location nearest:(BOOL)nearest {
+    if (!self.pdf) return NO;
+    CGFloat distance = CGFLOAT_MAX;
+    NSUInteger found = NSNotFound;
+    for (NSUInteger i = 0; i < self.pdf.pageRects.count; i++) {
+        NSRect r = self.pdf.pageRects[i].rectValue;
+        CGFloat dx = MAX(MAX(NSMinX(r) - point.x, point.x - NSMaxX(r)), 0);
+        CGFloat dy = MAX(MAX(NSMinY(r) - point.y, point.y - NSMaxY(r)), 0);
+        CGFloat d = hypot(dx, dy);
+        if (d < distance) { found = i; distance = d; }
+        if (d == 0) break;
+    }
+    if (found == NSNotFound || (!nearest && distance > 0)) return NO;
+    NSRect r = self.pdf.pageRects[found].rectValue;
+    CGPoint local = CGPointMake(MIN(MAX(point.x, NSMinX(r)), NSMaxX(r)) - NSMinX(r),
+                               NSMaxY(r) - MIN(MAX(point.y, NSMinY(r)), NSMaxY(r)));
+    CGPDFPageRef page = CGPDFDocumentGetPage((__bridge CGPDFDocumentRef)self.pdf.pdfDocument, found + 1);
+    CGAffineTransform transform = CGPDFPageGetDrawingTransform(page, kCGPDFCropBox,
+        CGRectMake(0, 0, NSWidth(r), NSHeight(r)), 0, true);
+    *pageIndex = found;
+    *location = NSPointFromCGPoint(CGPointApplyAffineTransform(local, CGAffineTransformInvert(transform)));
+    return YES;
+}
+
+- (BOOL)beginTextSelection:(NSEvent *)event point:(NSPoint)point {
+    if (!self.pdf || (event.modifierFlags & NSEventModifierFlagOption)) return NO;
+    self.textSelection = nil;
+    self.selectingText = NO;
+    PDFDocument *doc = self.pdf.pdfTextDocument;
+    if (!doc.allowsCopying) return YES;
+    NSUInteger index;
+    NSPoint location;
+    if (![self pdfPoint:point page:&index location:&location nearest:NO]) return YES;
+    self.selectionStartPage = index;
+    PDFPage *page = [doc pageAtIndex:index];
+    self.selectionStartPoint = location;
+    if (event.clickCount >= 3) self.textSelection = [page selectionForLineAtPoint:location];
+    else if (event.clickCount == 2) self.textSelection = [page selectionForWordAtPoint:location];
+    else self.selectingText = YES;
+    return YES;
+}
+
+- (void)extendTextSelection:(NSEvent *)event {
+    NSPoint point = [self convertPoint:event.locationInWindow fromView:nil];
+    if (!NSPointInRect(point, self.visibleRect)) [self autoscroll:event];
+    NSUInteger index;
+    NSPoint location;
+    point = [self convertPoint:event.locationInWindow fromView:nil];
+    if (![self pdfPoint:point page:&index location:&location nearest:YES]) return;
+    PDFDocument *doc = self.pdf.pdfTextDocument;
+    PDFPage *start = [doc pageAtIndex:self.selectionStartPage], *end = [doc pageAtIndex:index];
+    /* PDFKit's hit-test character indexes are not interchangeable with its
+     * selection-range indexes for every PDF (ligatures and inferred spaces
+     * can change the text stream). Keep endpoints in page coordinates and let
+     * the native selection engine resolve the range, as PDFView does. */
+    self.textSelection = index < self.selectionStartPage
+        ? [doc selectionFromPage:end atPoint:location toPage:start atPoint:self.selectionStartPoint]
+        : [doc selectionFromPage:start atPoint:self.selectionStartPoint toPage:end atPoint:location];
+}
+
+#pragma mark Mouse: PDF selects text; Option-drag pans
+
 
 - (void)mouseDown:(NSEvent *)event {
     [self.window makeFirstResponder:self];
     NSPoint p = [self convertPoint:event.locationInWindow fromView:nil];
+    __block BOOL selected = NO;
+    WithMaskedFP(^{ selected = [self beginTextSelection:event point:p]; });
+    if (selected) return;
     if (event.clickCount == 2) { [self.owner toggleFitAtPoint:p]; return; }
     self.dragging = [self.owner isPannable];
     if (!self.dragging) return;
@@ -526,6 +685,10 @@ static NSData *CoreSVGCompatible(NSData *svg) {
 }
 
 - (void)mouseDragged:(NSEvent *)event {
+    if (self.selectingText) {
+        WithMaskedFP(^{ [self extendTextSelection:event]; });
+        return;
+    }
     if (!self.dragging) return;
     NSClipView *clip = self.enclosingScrollView.contentView;
     CGFloat mag = MAX(self.enclosingScrollView.magnification, 0.001);
@@ -541,6 +704,7 @@ static NSData *CoreSVGCompatible(NSData *svg) {
 
 - (void)mouseUp:(NSEvent *)event {
     (void)event;
+    self.selectingText = NO;
     if (self.dragging) [NSCursor pop];
     self.dragging = NO;
 }
@@ -927,6 +1091,9 @@ static NSButton *ToolButton(NSString *symbol, NSString *fallback, NSString *tip,
 - (NSString *)infoText {
     IVImage *im = self.image;
     if (!im) return @"";
+    if (im.kind == IVKindPDF) return [NSString stringWithFormat:@"%lu pages · PDF · %@",
+        (unsigned long)im.pageRects.count, [NSByteCountFormatter stringFromByteCount:(long long)im.fileSize
+        countStyle:NSByteCountFormatterCountStyleFile]];
     NSString *dims = im.kind == IVKindVector
         ? [NSString stringWithFormat:@"%.0f × %.0f pt", im.size.width, im.size.height]
         : [NSString stringWithFormat:@"%.0f × %.0f", im.size.width, im.size.height];
@@ -949,6 +1116,9 @@ static NSButton *ToolButton(NSString *symbol, NSString *fallback, NSString *tip,
     self.image = image;
     self.mode = [IVView modeForFlags:flags];
 
+    self.canvas.textSelection = nil;
+    self.canvas.selectingText = NO;
+    self.canvas.pdf = image.kind == IVKindPDF ? image : nil;
     self.canvas.vector = image.vector;
     self.canvas.raster.cgImage = nil;
     self.canvas.checkerboard = image.hasAlpha;
@@ -959,8 +1129,9 @@ static NSButton *ToolButton(NSString *symbol, NSString *fallback, NSString *tip,
     self.infoLabel.toolTip = [NSString stringWithFormat:@"%@\n%@", image.path.lastPathComponent,
                               self.infoLabel.stringValue];
     [self applyMode];
+    if (image.kind == IVKindPDF) [self.canvas scrollToTop];
 
-    if (image.kind == IVKindVector) return;
+    if (image.kind != IVKindRaster) return;
 
     /* Large decodes (RAW, big TIFF) show a spinner, small ones don't flash it. */
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)),
@@ -1034,7 +1205,7 @@ static NSButton *ToolButton(NSString *symbol, NSString *fallback, NSString *tip,
 - (NSSize)viewportSize { return self.scroll.contentView.frame.size; }
 
 - (CGFloat)fitMagnification {
-    NSSize vp = [self viewportSize], im = self.image.size;
+    NSSize vp = [self viewportSize], im = self.image.kind == IVKindPDF ? self.image.fitSize : self.image.size;
     if (im.width < 1 || im.height < 1 || vp.width < 1 || vp.height < 1) return 1;
     return MIN(vp.width / im.width, vp.height / im.height);
 }
@@ -1068,7 +1239,8 @@ static NSButton *ToolButton(NSString *symbol, NSString *fallback, NSString *tip,
         case IVZoomActual:   mag = 1; break;
         case IVZoomManual:   return;
     }
-    NSPoint center = NSMakePoint(self.image.size.width / 2, self.image.size.height / 2);
+    NSPoint center = NSMakePoint(self.image.size.width / 2,
+        self.image.kind == IVKindPDF ? self.image.fitSize.height / 2 : self.image.size.height / 2);
     [self setMagnification:mag centeredAt:center];
     /* Centered, whether or not it fits. */
     NSClipView *clip = self.scroll.contentView;
@@ -1151,10 +1323,11 @@ static const CGFloat kSteps[] = { 0.01, 0.02, 0.03, 0.05, 0.08, 0.1, 0.125, 0.16
     [self.zoomPopup itemAtIndex:0].title = title;
     self.canvas.raster.pixelated = mag >= 2;
     if (self.canvas.raster.pixelated) self.canvas.raster.needsDisplay = YES;   /* redraw at the new scale */
-    self.scroll.documentCursor = [self isPannable] ? [NSCursor openHandCursor] : nil;
+    self.scroll.documentCursor = self.canvas.pdf ? [NSCursor IBeamCursor]
+        : ([self isPannable] ? [NSCursor openHandCursor] : nil);
     /* The checkerboard keeps its on-screen size, and SVG is redrawn from the
      * vector source at the new scale. */
-    if (self.canvas.checkerboard || self.canvas.vector) self.canvas.needsDisplay = YES;
+    if (self.canvas.checkerboard || self.canvas.vector || self.canvas.pdf) self.canvas.needsDisplay = YES;
 }
 
 - (void)liveMagnifyDidEnd:(NSNotification *)note {
@@ -1229,6 +1402,23 @@ static const CGFloat kSteps[] = { 0.01, 0.02, 0.03, 0.05, 0.08, 0.1, 0.125, 0.16
 - (BOOL)copyImage {
     IVImage *im = self.image;
     if (!im) return NO;
+    if (im.kind == IVKindPDF) {
+        if (self.canvas.textSelection.string.length) {
+            if (!im.pdfTextDocument.allowsCopying) return NO;
+            NSPasteboard *pb = NSPasteboard.generalPasteboard;
+            NSPasteboardItem *item = [[NSPasteboardItem alloc] init];
+            [item setString:self.canvas.textSelection.string forType:NSPasteboardTypeString];
+            [pb clearContents];
+            return [pb writeObjects:@[ item ]];
+        }
+        NSData *data = [NSData dataWithContentsOfFile:im.path options:NSDataReadingMappedIfSafe error:NULL];
+        if (!data) return NO;
+        NSPasteboard *pb = NSPasteboard.generalPasteboard;
+        [pb clearContents];
+        NSPasteboardItem *item = [[NSPasteboardItem alloc] init];
+        [item setData:data forType:NSPasteboardTypePDF];
+        return [pb writeObjects:@[ item ]];
+    }
     __block CGImageRef cg = (__bridge CGImageRef)self.canvas.raster.cgImage;
     __block id rendered = nil;
     if (im.kind == IVKindVector) {
@@ -1429,6 +1619,10 @@ int __stdcall ListSendCommand(HWND ListWin, int Command, int Parameter) {
     OnMain(^{
         if (Command == lc_copy) {
             rc = [view copyImage] ? LISTPLUGIN_OK : LISTPLUGIN_ERROR;
+        } else if (Command == lc_selectall && view.image.kind == IVKindPDF &&
+                   view.image.pdfTextDocument.allowsCopying) {
+            view.canvas.textSelection = [view.image.pdfTextDocument selectionForEntireDocument];
+            rc = LISTPLUGIN_OK;
         } else if (Command == lc_newparams) {
             view.mode = [IVView modeForFlags:Parameter];
             [view applyMode];

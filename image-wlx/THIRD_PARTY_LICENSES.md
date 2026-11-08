@@ -1,7 +1,8 @@
 # Third-party licenses — image-wlx
 
 This plugin vendors nothing. Decoding uses Apple's **ImageIO** and **AppKit**
-(CoreSVG for SVG), drawing uses AppKit and Core Animation, and `.svgz`
+(CoreSVG for SVG), PDF drawing uses **Core Graphics** and text selection uses **PDFKit**; other
+drawing uses AppKit and Core Animation, and `.svgz`
 decompression uses **zlib**, which ships with macOS and is linked from the SDK
 (`-lz`). zlib is under the [zlib license](https://zlib.net/zlib_license.html).
 

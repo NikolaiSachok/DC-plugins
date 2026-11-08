@@ -38,10 +38,13 @@ jobs:
           body: |
             Prebuilt universal (arm64 + x86_64) `ImageView.wlx` for Double Commander on macOS.
 
-            Views images in the F3 viewer and Quick View — zoom (pinch, Cmd+scroll,
+            Views images and PDFs in the F3 viewer and Quick View — zoom (pinch, Cmd+scroll,
             Cmd+= / Cmd+-) and pan (drag) with crisp, vector SVG at any zoom; PNG,
             JPEG, HEIC, WebP, AVIF, GIF (animated), TIFF, RAW and 60+ other formats;
-            pixel size, format and file size in the toolbar.
+            pixel size, format and file size in the toolbar. PDFs scroll continuously,
+            stay vector-sharp, and support text selection and copying. Drag to select
+            PDF text; Option-drag pans. Re-run the installer after upgrading to
+            register PDF support ahead of MacPreview.
 
             **Install (no Xcode needed):** unzip, quit Double Commander, then run `./install.sh`.
             Verify the download with the included `.sha256`.
