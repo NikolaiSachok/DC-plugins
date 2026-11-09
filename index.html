@@ -4,28 +4,28 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="google-site-verification" content="CV7PpDhXu3wibVB7FyQnEst6csNsauwLdyxRCKkASFs" />
-<title>Double Commander plugins for macOS — image viewer with zoom, EPUB/FB2 reader, Markdown viewer &amp; media-info columns</title>
-<meta name="description" content="Free, native macOS plugins for Double Commander: an image viewer (WLX) with real zoom and pan and vector-sharp SVG for 60+ formats, an e-book reader (WLX) that opens EPUB and FictionBook FB2 files with a contents sidebar, a Markdown preview/viewer plugin (WLX) with Mermaid diagrams &amp; KaTeX math, and a media-info content plugin (WDX) showing image &amp; video resolution, duration, and PDF page count as custom columns. Universal binaries, no dependencies, open source.">
-<link rel="canonical" href="https://nikolaisachok.github.io/DC-plugins/">
+<title>Double Commander plugins for macOS — spreadsheets, PDF &amp; image viewer, Markdown, e-books and media columns</title>
+<meta name="description" content="Five free native macOS Double Commander plugins: select and copy spreadsheet cells in CSV, Excel, Numbers and ODS; zoom images and PDFs and copy PDF text; read EPUB/FB2, render and print Markdown, and display media metadata columns. Offline universal binaries for Apple Silicon and Intel.">
+<link rel="canonical" href="https://nikolaisachok.com/DC-plugins/">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Double Commander plugins for macOS — image viewer with zoom, EPUB/FB2 reader, Markdown viewer &amp; media-info columns">
-<meta property="og:description" content="Native macOS plugins for Double Commander: an image viewer with zoom, pan and sharp SVG, an EPUB &amp; FB2 e-book reader, a Markdown viewer (Mermaid + KaTeX), and a media-info plugin showing image/video resolution &amp; duration as columns. Universal, open source, no dependencies.">
-<meta property="og:url" content="https://nikolaisachok.github.io/DC-plugins/">
-<meta property="og:image" content="https://nikolaisachok.github.io/DC-plugins/assets/screenshot-markdown.png">
+<meta property="og:title" content="Double Commander plugins for macOS — TableView, ImageView, MarkdownView, BookView and MediaInfo">
+<meta property="og:description" content="Select and copy spreadsheet cells, zoom images and PDFs, copy PDF text, print Markdown with page numbers, read e-books and browse media metadata. Five native macOS plugins with universal install bundles.">
+<meta property="og:url" content="https://nikolaisachok.com/DC-plugins/">
+<meta property="og:image" content="https://nikolaisachok.com/DC-plugins/assets/screenshot-markdown.png">
 <meta name="twitter:card" content="summary_large_image">
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  "name": "Double Commander macOS plugins — ImageView, BookView, MarkdownView & MediaInfo",
+  "name": "Double Commander macOS plugins — TableView, ImageView, BookView, MarkdownView & MediaInfo",
   "operatingSystem": "macOS 11+",
   "applicationCategory": "DeveloperApplication",
-  "url": "https://nikolaisachok.github.io/DC-plugins/",
+  "url": "https://nikolaisachok.com/DC-plugins/",
   "downloadUrl": "https://github.com/NikolaiSachok/DC-plugins/releases",
   "softwareHelp": "https://github.com/NikolaiSachok/DC-plugins/wiki",
   "license": "https://opensource.org/licenses/MIT",
-  "description": "Native macOS plugins for Double Commander: an image viewer (WLX) with zoom, pan and vector-sharp SVG for 60+ formats, an e-book reader (WLX) for EPUB and FictionBook FB2 with a contents sidebar, a Markdown preview/viewer plugin (WLX) with Mermaid diagrams and KaTeX math, and a media-info content plugin (WDX) showing image and video resolution, duration, and PDF page count as custom columns.",
+  "description": "Five native macOS Double Commander plugins: TableView previews CSV, Excel, Numbers and OpenDocument with cell selection and copy; ImageView zooms images and PDFs with PDF text selection; MarkdownView renders, searches and prints Markdown with page numbers; BookView reads EPUB and FB2; MediaInfo adds media metadata columns.",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
 }
 </script>
@@ -63,10 +63,10 @@
 <header>
   <div class="wrap">
     <h1>Double Commander plugins for macOS
-      <span class="sub">A native <strong>image viewer</strong> with real zoom and pan, an <strong>EPUB &amp; FB2 e-book reader</strong>, a <strong>Markdown viewer</strong> (with Mermaid diagrams &amp; KaTeX math), and a <strong>media-info</strong> plugin that shows image &amp; video resolution, duration, and PDF page count — universal, open source, no dependencies.</span>
+      <span class="sub">Select and copy <strong>spreadsheet cells</strong>, zoom <strong>images and PDFs</strong>, copy PDF text, read <strong>e-books</strong>, render and print <strong>Markdown</strong>, and browse <strong>media metadata</strong> — five native, offline plugins for Apple Silicon and Intel.</span>
     </h1>
     <div class="badges">
-      <a class="primary" href="https://github.com/NikolaiSachok/DC-plugins/releases">Download latest release</a>
+      <a class="primary" href="https://github.com/NikolaiSachok/DC-plugins/releases">Download plugins</a>
       <a href="https://github.com/NikolaiSachok/DC-plugins">View on GitHub</a>
       <a href="https://github.com/NikolaiSachok/DC-plugins/wiki">Documentation</a>
     </div>
@@ -84,11 +84,25 @@
     <figcaption>Real output: <code>.md</code> rendered in Double Commander's viewer — KaTeX math, a Mermaid diagram, highlighted code, and tables, all from one plugin.</figcaption>
   </figure>
 
-  <p>Four small, fast, native plugins that fill real gaps in <a href="https://doublecmd.sourceforge.io/">Double Commander</a> on macOS. Each is a universal binary (Apple Silicon + Intel), built with no third-party native dependencies and no network access at view time, and tested against the real built artifact. They use the Total Commander plugin ABI, so they load straight into Double Commander.</p>
+  <p>Five native plugins that fill real gaps in <a href="https://doublecmd.sourceforge.io/">Double Commander</a> on macOS. Each is a universal binary (Apple Silicon + Intel), built with no third-party native dependencies and no network access at view time, and tested against the real built artifact. They use the Total Commander plugin ABI, so they load straight into Double Commander.</p>
 
-  <h2 id="imageview">ImageView <span class="tag">WLX · lister</span></h2>
+  <h2 id="tableview">TableView <span class="tag">WLX · lister · v0.1.0</span></h2>
   <div class="card">
-    <p><strong>An image viewer for Double Commander on macOS with zoom and pan that work.</strong> Press <strong>F3</strong> or open Quick View on an image and it opens fitted to the window; pinch, <strong>⌘</strong>+scroll or <strong>⌘=</strong> / <strong>⌘−</strong> to zoom, drag to pan. SVG stays sharp at any magnification.</p>
+    <p><strong>A native spreadsheet preview with cell selection and copying.</strong> Press <strong>F3</strong> or open Quick View on CSV, Excel, Numbers or OpenDocument files. Select a cell or rectangular range and copy its values into another spreadsheet or a text editor.</p>
+    <ul>
+      <li><strong>CSV / TSV, XLSX / XLSM / XLSB / XLS, Numbers, ODS / FODS, DIF, SYLK and dBASE</strong></li>
+      <li>Drag or Shift-click to select a range; select whole rows, columns or the worksheet; <strong>⌘C</strong> copies TSV values without toolbar text or coordinate headers</li>
+      <li>Worksheet picker, frozen coordinate headers, keyboard navigation and <strong>⌘F</strong> search</li>
+      <li>Read-only, bounded previews with formatted numbers/dates and cached formula results; no macros run and formulas are not recalculated</li>
+      <li>Modern single-file Numbers documents supported, with each table in the worksheet picker. Charts, spreadsheet page layouts, older Numbers packages and password-protected files are unsupported.</li>
+      <li>Offline workbook decoding embedded in the plugin; no Office installation or external converter required</li>
+    </ul>
+    <p><a href="https://github.com/NikolaiSachok/DC-plugins/releases/tag/table-wlx-v0.1.0">Download TableView 0.1.0</a> · <a href="https://github.com/NikolaiSachok/DC-plugins/tree/main/table-wlx">Formats, limits and documentation</a></p>
+  </div>
+
+  <h2 id="imageview">ImageView <span class="tag">WLX · lister · v0.2.0</span></h2>
+  <div class="card">
+    <p><strong>An image and PDF viewer for Double Commander on macOS with zoom and pan.</strong> Press <strong>F3</strong> or open Quick View on an image or PDF and it opens fitted to the window; pinch, <strong>⌘</strong>+scroll or <strong>⌘=</strong> / <strong>⌘−</strong> to zoom. Drag images to pan; Option-drag pans PDFs. SVG stays sharp at any magnification.</p>
     <figure class="hero" style="max-width:640px;margin:22px auto 6px">
       <picture>
         <source srcset="assets/screenshot-image.webp" type="image/webp">
@@ -98,13 +112,16 @@
       </picture>
     </figure>
     <ul>
-      <li>Zoom around the pointer with pinch or <strong>⌘</strong>/<strong>⌥</strong>+scroll, from the keyboard, a preset menu, or a double-click that toggles Fit and 100%</li>
+      <li>Zoom around the pointer with pinch or <strong>⌘</strong>/<strong>⌥</strong>+scroll, from the keyboard, a preset menu, or (for images) a double-click that toggles Fit and 100%</li>
+      <li><strong>Continuous, vector-sharp PDF pages</strong> with PgUp/PgDn, arrow keys, Home/End and the same zoom controls</li>
+      <li><strong>Select and copy PDF text</strong>: drag, double/triple-click, <strong>⌘A</strong> and <strong>⌘C</strong>; Option-drag to pan. Image-only scans need OCR elsewhere.</li>
       <li><strong>SVG and SVGZ redrawn as vectors</strong> at every zoom level; only the exposed part is drawn, so large diagrams pan smoothly even at 1600%</li>
       <li>60+ formats through the system's own decoders: PNG, JPEG, HEIC, WebP, AVIF, JPEG XL, TIFF, PSD, EXR, camera RAW, animated GIF and APNG</li>
       <li>Pixel size, format and file size in the toolbar; EXIF orientation applied; transparency over a checkerboard; crisp pixels past 200%</li>
       <li>Follows the viewer's <em>Stretch</em> settings; <strong>⌘C</strong> copies the image, plus the original file where a paste wants it</li>
     </ul>
-    <p class="muted">Double Commander's bundled preview cannot zoom or pan at all, and its own Graphics mode scales a fixed bitmap, so SVG goes soft.</p>
+    <p><a href="https://github.com/NikolaiSachok/DC-plugins/releases/tag/image-wlx-v0.2.0">Download ImageView 0.2.0</a> · <a href="https://github.com/NikolaiSachok/DC-plugins/tree/main/image-wlx">Documentation</a></p>
+    <p class="muted">Upgrading for PDF support? Quit Double Commander and re-run the installer so ImageView is registered ahead of MacPreview.</p>
   </div>
 
   <h2 id="bookview">BookView <span class="tag">WLX · lister</span></h2>
@@ -151,13 +168,21 @@ report.pdf      820 K    14 pages</div>
     <ul style="margin-top:16px">
       <li>Images: dimensions, megapixels, DPI, bit depth (via ImageIO — header read only)</li>
       <li>Audio/video: duration, bitrate, sample rate, channels, codecs (AVFoundation)</li>
-      <li>AVI: resolution, duration, frame rate (self-contained RIFF parser)</li>
+      <li>AVI: resolution, duration, frame rate (self-contained RIFF parser); Matroska/WebM: dimensions, duration and codecs (self-contained EBML parser)</li>
       <li>PDF: page count. Every field is also available as its own sortable column.</li>
     </ul>
   </div>
 
-  <h2>Install</h2>
-  <p>Download the latest <a href="https://github.com/NikolaiSachok/DC-plugins/releases">release bundle</a> (no Xcode needed), unzip, quit Double Commander, then run the installer:</p>
+  <h2 id="install">Install</h2>
+  <p>Requires macOS 11 or later. Choose a plugin; versions are independent:</p>
+  <ul>
+    <li><a href="https://github.com/NikolaiSachok/DC-plugins/releases/tag/table-wlx-v0.1.0">TableView 0.1.0</a></li>
+    <li><a href="https://github.com/NikolaiSachok/DC-plugins/releases/tag/image-wlx-v0.2.0">ImageView 0.2.0</a></li>
+    <li><a href="https://github.com/NikolaiSachok/DC-plugins/releases/tag/markdown-wlx-v0.5.1">MarkdownView 0.5.1</a></li>
+    <li><a href="https://github.com/NikolaiSachok/DC-plugins/releases/tag/book-wlx-v0.2.0">BookView 0.2.0</a></li>
+    <li><a href="https://github.com/NikolaiSachok/DC-plugins/releases/tag/media-info-wdx-v0.2.0">MediaInfo 0.2.0</a></li>
+  </ul>
+  <p>Download your plugin's <a href="https://github.com/NikolaiSachok/DC-plugins/releases">release bundle</a> (no Xcode needed), unzip, quit Double Commander, then run the installer:</p>
   <pre><code>./install.sh</code></pre>
   <p class="muted">Or build from source — see each plugin's README. Double Commander is ad-hoc signed with no library validation, so the ad-hoc-signed plugins load cleanly.</p>
 
