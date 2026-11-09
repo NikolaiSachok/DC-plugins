@@ -9,7 +9,8 @@ So far that means a **Markdown preview/viewer plugin for Double Commander** (ren
 plugin** that shows **image and video resolution, duration, and PDF page count as
 custom columns**, an **e-book reader** that opens EPUB and FictionBook files in
 the viewer with a contents sidebar, and an **image viewer** with real zoom and pan
-and vector-sharp SVG — the things people reach for as a "Double Commander
+and vector-sharp SVG, plus a **table viewer** with cell selection and copying for
+CSV, Excel, Numbers and OpenDocument — the things people reach for as a "Double Commander
 Markdown plugin", an "image dimensions column on macOS", an "EPUB / FB2 viewer
 plugin for Double Commander" (of which there was no macOS one at all), or a way
 to "zoom an SVG in Double Commander". All are WLX/WDX plugins using the Total
@@ -28,6 +29,7 @@ reproducible and documented.
 | [`media-info-wdx`](media-info-wdx/) | WDX (content) | Shows media metadata in custom **columns** & tooltips — image/video **resolution**, audio/video **duration**, bitrate, codecs, PDF **page count**, plus an adaptive `Summary` field. Native ImageIO / AVFoundation / CGPDF; no deps, no network. | ✅ stable |
 | [`book-wlx`](book-wlx/) | WLX (lister) | Reads **EPUB and FictionBook (FB2) e-books** in the viewer (F3) — contents sidebar, continuous reflowable text, cover, reading progress, adjustable text size, light/dark/sepia. Served straight out of the container in-process: nothing unpacked to disk, nothing fetched from the network. | ✅ stable |
 | [`image-wlx`](image-wlx/) | WLX (lister) | Views **images and PDFs** in the viewer (F3) and Quick View with real **zoom and pan** — pinch, Cmd+scroll, Cmd+= / Cmd+-, drag — and **vector-sharp SVG** at any zoom. 60+ formats via ImageIO (HEIC, WebP, AVIF, RAW, animated GIF…); pixel size, format and file size in the toolbar. | 🆕 new |
+| [`table-wlx`](table-wlx/) | WLX (lister) | Previews **CSV/TSV, Excel, Apple Numbers and OpenDocument spreadsheets** as a native grid. Select cells or rectangular ranges, copy TSV values, switch worksheets and search. Offline, read-only. | 🆕 new |
 
 More plugins will follow; the repo layout and the [contributor guide](CONTRIBUTING.md)
 are built for that.

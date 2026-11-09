@@ -7,6 +7,13 @@ independently and tagged below.
 ## [Unreleased]
 
 ### Added
+- **table-wlx 0.1.0:** New native table viewer for CSV/TSV, Excel
+  (XLSX/XLSM/XLSB/XLS), Apple Numbers, OpenDocument (ODS/FODS), DIF, SYLK and
+  dBASE. Select cells, rows, columns or rectangular ranges; copy TSV values
+  through Cmd+C, select all with Cmd+A, switch worksheets and search through
+  Double Commander's Find. Frozen coordinate headers, keyboard navigation,
+  bounded previews and offline decoding. Universal binary, installer, real-artifact
+  parser/copy/focus/key/render tests and CI/release workflows. Tracks #15.
 - **image-wlx 0.2.0:** PDF viewing with continuous pages and the image viewer's
   zoom and pan controls: PgUp/PgDn, arrows, Home/End, Space, pinch, Cmd/Option+scroll,
   Cmd+= / Cmd+-, and the toolbar. PDF pages remain vector-sharp and honor crop
