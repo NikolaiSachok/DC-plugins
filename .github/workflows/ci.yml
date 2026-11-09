@@ -158,3 +158,20 @@ jobs:
             -framework CoreGraphics -framework ImageIO \
             -o build/test_host test/test_host.m
           ./build/test_host build/MediaInfo.wdx
+
+      - name: Build and verify table-wlx universal ABI
+        working-directory: table-wlx
+        run: |
+          ./build.sh
+          archs=$(lipo -archs build/TableView.wlx)
+          echo "$archs" | grep -q arm64
+          echo "$archs" | grep -q x86_64
+          for sym in _ListLoad _ListLoadNext _ListCloseWindow \
+                     _ListGetDetectString _ListSetDefaultParams _ListSendCommand _ListSearchTextW; do
+            nm -gU build/TableView.wlx | grep -q " T $sym" \
+              || { echo "missing export: $sym"; exit 1; }
+          done
+
+      - name: Run table-wlx harnesses (real artifact)
+        working-directory: table-wlx
+        run: ./test/run.sh
