@@ -63,7 +63,7 @@ static BOOL CheckZIP(NSData *data) {
     while (ok && (rc = archive_read_next_header(a, &entry)) == 0) {
         if (++entries > 10000 || archive_entry_size(entry) > 64 * 1024 * 1024) { ok = NO; break; }
         const char *entryName=archive_entry_pathname(entry);
-        BOOL odfXML=entryName && [Path(entryName).lastPathComponent isEqual:@"content.xml"];
+        BOOL odfXML=entryName && [Path(entryName).lastPathComponent.lowercaseString isEqual:@"content.xml"];
         NSMutableData *xml=odfXML?[NSMutableData data]:nil;
         char buf[65536]; ssize_t count;
         while ((count = archive_read_data(a, buf, sizeof(buf))) > 0) {

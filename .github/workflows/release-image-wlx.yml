@@ -19,6 +19,12 @@ jobs:
         working-directory: image-wlx
         run: ./build.sh
 
+      - name: Check tag matches plugin version
+        working-directory: image-wlx
+        run: |
+          version=$(sed -n 's/^#define IV_VERSION "\([^" ]*\)".*/\1/p' ImageView.m)
+          test "$GITHUB_REF_NAME" = "image-wlx-v$version"
+
       - name: Assemble install bundle
         working-directory: image-wlx
         run: |

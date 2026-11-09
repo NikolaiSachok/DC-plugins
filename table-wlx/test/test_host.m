@@ -129,7 +129,11 @@ int main(int argc,char **argv) {
         Check(Rows().count==3 && [Rows()[0][2] isEqual:@"Third column"] && [Rows()[2][0] isEqual:@"7"],"hand-authored ODF sparse and repeated cells");
         next(NULL,handle,(char*)File(@"repeated-values.fods").fileSystemRepresentation,0); Wait(view);
         Check([Rows()[0][0] isEqual:@"x"] && [Rows()[0][2] isEqual:@"x"] && [Rows()[0][3] isEqual:@"Third column"],"repeated ODF columns beyond reported range preserved");
-        for(NSString *bad in @[@"oversized.ods",@"oversized.csv",@"repetition-bomb.fods",@"repetition-bomb.ods",@"alias-bomb.fods",@"spaces-bomb.fods",@"renamed-bomb.xls"]) {
+        for(NSString *valid in @[@"case-valid-ods.ods",@"case-valid-root-ods.ods"]) {
+            next(NULL,handle,(char*)File(valid).fileSystemRepresentation,0); Wait(view);
+            Check(Rows().count>=4 && [Rows()[1][0] isEqual:@"Alpha"],"case-insensitive ODS content path decoded");
+        }
+        for(NSString *bad in @[@"oversized.ods",@"oversized.csv",@"repetition-bomb.fods",@"repetition-bomb.ods",@"case-bomb-ods.ods",@"case-bomb-root-ods.ods",@"alias-bomb.fods",@"spaces-bomb.fods",@"renamed-bomb.xls"]) {
             next(NULL,handle,(char*)File(bad).fileSystemRepresentation,0); Wait(view);
             Check(Rows().count==0 && ![[view valueForKey:@"sheets"] count],"oversized input rejected before rendering");
         }

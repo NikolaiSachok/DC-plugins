@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Hand-authored XML workbooks and hostile containers; no decoder round trip."""
 from pathlib import Path
-import sys, zipfile
+import sys, zipfile, copy
 out = Path(sys.argv[1])
 with zipfile.ZipFile(out / 'oversized.ods', 'w', compression=zipfile.ZIP_DEFLATED) as z:
     z.writestr('content.xml', b'x' * (65 * 1024 * 1024))
@@ -36,3 +36,20 @@ spaces = base.replace('Third column', 'x' + '<text:s text:c="32768"/>' * 1000)
 (out / 'renamed-bomb.xls').write_text(bomb)
 # CSV is always text, even when it looks like an OpenDocument document.
 (out / 'xml-looking.csv').write_text(bomb)
+
+# SheetJS resolves root ZIP paths case-insensitively, including Root Entry/.
+# Retain the real ODS manifest so these exercise workbook dispatch, not fallback.
+with zipfile.ZipFile(out / 'sample.ods') as source:
+    for prefix in ('', 'Root Entry/'):
+        suffix = 'root-' if prefix else ''
+        for hostile in (False, True):
+            name = ('case-bomb-' if hostile else 'case-valid-') + suffix + 'ods.ods'
+            with zipfile.ZipFile(out / name, 'w', compression=zipfile.ZIP_DEFLATED) as dest:
+                for original in source.infolist():
+                    data = source.read(original)
+                    entry = copy.copy(original)
+                    if entry.filename == 'content.xml':
+                        entry.filename = prefix + 'CONTENT.XML'
+                        if hostile:
+                            data = bomb.replace('1000000', '513').encode()
+                    dest.writestr(entry, data)
