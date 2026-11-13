@@ -6,6 +6,14 @@ independently and tagged below.
 
 ## [Unreleased]
 
+### Added
+- **table-wlx 0.2.0:** Drag column-header dividers to resize columns. A scrollable
+  panel below the grid displays the active cell's full preview value, preserving
+  line breaks, and follows selection, keyboard navigation and Find. Copying still
+  exports the selected grid cells as TSV. The value panel adapts to its content,
+  growing from one line to a maximum of 80 points and scrolling longer values.
+  Closes #46.
+
 ## table-wlx 0.1.0 — 2026-11-09
 
 ### Added

@@ -37,6 +37,20 @@ Builds and tests run offline using the vendored library and generated fixtures.
 - **Esc**, **N/P**, **Alt+Left/Right** and other unused keys go to DC's viewer.
   In Quick View, the file panel keeps keyboard focus until you click the grid.
 
+## Reading long cells
+
+Drag a divider between column-letter headers to widen or narrow a column
+(48–4096 points). Selection, copying and horizontal scrolling follow the new
+widths. Widths reset when switching worksheets or opening another file.
+
+The panel below the grid shows the active cell's address and full preview value,
+with line breaks preserved. It follows mouse selection, keyboard navigation and
+Find. The panel fits one line for short values and grows with wrapped or multiline
+content, up to 80 points (its original height). It adapts when the window is
+resized. Longer values can be scrolled within the panel; Cmd+C still copies
+the selected grid cells. For a range, the panel shows the cell at the moving end
+of the selection. The existing per-cell preview limit still applies.
+
 ## Scope and limits
 
 This is a data preview, not a spreadsheet editor or a print-layout renderer.

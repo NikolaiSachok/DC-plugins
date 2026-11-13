@@ -37,3 +37,6 @@ fs.writeFileSync(path.join(dir,'directive.csv'),'sep=;\nName;Count\nAlpha;42\n')
 fs.writeFileSync(path.join(dir,'wide.csv'),Array(1000000).fill('x').join(','));
 fs.writeFileSync(path.join(dir,'long.csv'),'x'.repeat(40000));
 fs.writeFileSync(path.join(dir,'incomplete.csv'),'Name,Value\nAlpha,"unfinished');
+
+const description='A long example record with a complete description that extends beyond the default column width. Drag the column divider to skim the column, or read the selected value in the panel below the grid.';
+fs.writeFileSync(path.join(dir,'details.csv'),'ID,Description,Notes\n001,"'+description+'","First line\nSecond line\nThird line\nFourth line\nFifth line\nLast line: end of record"\n002,"Another long description that is easy to scan when the Description column is made wider.",Short note\n');
