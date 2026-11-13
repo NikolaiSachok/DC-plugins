@@ -10,7 +10,7 @@
 #include "build/parser.h"
 #include "ODFGuard.h"
 
-#define TV_VERSION "0.1.0"
+#define TV_VERSION "0.2.0"
 #define TV_EXPORT __attribute__((visibility("default")))
 static const char *kDetect =
     "EXT=\"CSV\"|EXT=\"TSV\"|EXT=\"XLSX\"|EXT=\"XLSM\"|EXT=\"XLSB\"|EXT=\"XLS\"|"
@@ -130,6 +130,13 @@ static NSDictionary *ReadWorkbook(NSString *path, NSString **error) {
 @property(nonatomic, weak) TVView *owner;
 @property(nonatomic, copy) NSArray<NSArray<NSString *> *> *rows;
 @property(nonatomic) NSInteger columns, anchorRow, anchorCol, endRow, endCol;
+@property(nonatomic, strong) NSMutableArray<NSNumber *> *columnWidths;
+@property(nonatomic, copy) NSArray<NSNumber *> *columnEdges;
+@property(nonatomic) NSInteger resizingColumn;
+@property(nonatomic) CGFloat resizeStartX, resizeStartWidth;
+- (void)resetColumnWidths;
+- (CGFloat)columnOrigin:(NSInteger)column;
+- (NSInteger)columnAtX:(CGFloat)x;
 @property(nonatomic) NSInteger dragMode; /* 0 cells, 1 rows, 2 columns */
 - (void)selectRow:(NSInteger)row column:(NSInteger)col extend:(BOOL)extend;
 - (void)handKeyToHost:(NSEvent *)event;
@@ -141,21 +148,66 @@ static NSDictionary *ReadWorkbook(NSString *path, NSString **error) {
 @property(nonatomic, strong) NSScrollView *scroll;
 @property(nonatomic, strong) NSPopUpButton *sheetsMenu;
 @property(nonatomic, strong) NSTextField *status;
+@property(nonatomic, strong) NSTextField *cellAddress;
+@property(nonatomic, strong) NSScrollView *cellScroll;
+@property(nonatomic, strong) NSTextView *cellContent;
 @property(nonatomic, strong) NSButton *clipboardButton;
 @property(nonatomic, copy) NSArray<NSDictionary *> *sheets;
 @property(atomic) NSUInteger generation;
-@property(nonatomic) BOOL loading;
+@property(nonatomic) BOOL loading, headerRedrawPending;
 @property(atomic) BOOL closed;
 @property(nonatomic, strong) NSMutableArray<NSDictionary *> *pendingSearches;
 - (void)openPath:(NSString *)path;
 - (void)updateStatus;
+- (void)sizeGrid;
 - (void)claimFocusIfUnclaimed;
 - (void)close;
 - (BOOL)copySelection;
 - (void)search:(NSString *)query flags:(int)flags;
 @end
 
+/* The value panel is for reading; grid selection and DC retain the keyboard.
+ * Its scroll view still allows long, multiline values to be read in full. */
+@interface TVCellContent : NSTextView @end
+@implementation TVCellContent
+- (BOOL)acceptsFirstResponder { return NO; }
+@end
+
 @implementation TVGrid
+- (void)resetColumnWidths {
+    self.columnWidths=[NSMutableArray arrayWithCapacity:self.columns];
+    for (NSInteger c=0;c<self.columns;c++) [self.columnWidths addObject:@(kCol)];
+    self.resizingColumn=-1;
+    [self rebuildColumnEdges];
+}
+- (void)rebuildColumnEdges {
+    NSMutableArray *edges=[NSMutableArray arrayWithObject:@(kGutter)];
+    CGFloat x=kGutter;
+    for (NSNumber *width in self.columnWidths) { x+=width.doubleValue; [edges addObject:@(x)]; }
+    self.columnEdges=edges;
+}
+- (CGFloat)columnOrigin:(NSInteger)column {
+    return self.columnEdges[column].doubleValue;
+}
+- (NSInteger)columnAtX:(CGFloat)x {
+    for (NSInteger c=0;c<self.columns;c++) if (x<[self columnOrigin:c+1]) return c;
+    return self.columns;
+}
+- (NSInteger)dividerAtPoint:(NSPoint)p {
+    NSRect visible=self.visibleRect;
+    if (p.y<visible.origin.y || p.y>=visible.origin.y+kRow || p.x<visible.origin.x+kGutter+4) return -1;
+    for (NSInteger c=0;c<self.columns;c++) if (fabs(p.x-[self columnOrigin:c+1])<=4) return c;
+    return -1;
+}
+- (void)resetCursorRects {
+    [super resetCursorRects];
+    NSRect visible=self.visibleRect;
+    NSRect header=NSMakeRect(visible.origin.x+kGutter,visible.origin.y,MAX(0,visible.size.width-kGutter),kRow);
+    for (NSInteger c=0;c<self.columns;c++) {
+        NSRect edge=NSIntersectionRect(header,NSMakeRect([self columnOrigin:c+1]-4,visible.origin.y,8,kRow));
+        if (!NSIsEmptyRect(edge)) [self addCursorRect:edge cursor:NSCursor.resizeLeftRightCursor];
+    }
+}
 - (BOOL)isFlipped { return YES; }
 - (BOOL)isOpaque { return YES; }
 - (BOOL)acceptsFirstResponder { return YES; }
@@ -177,12 +229,12 @@ static NSDictionary *ReadWorkbook(NSString *path, NSString **error) {
         NSRect visible = self.visibleRect;
         NSInteger r0 = MAX(0, (NSInteger)((NSMinY(dirty)-kRow)/kRow));
         NSInteger r1 = MIN((NSInteger)self.rows.count, (NSInteger)ceil(NSMaxY(dirty)/kRow));
-        NSInteger c0 = MAX(0, (NSInteger)((NSMinX(dirty)-kGutter)/kCol));
-        NSInteger c1 = MIN(self.columns, (NSInteger)ceil((NSMaxX(dirty)-kGutter)/kCol));
+        NSInteger c0 = [self columnAtX:NSMinX(dirty)];
+        NSInteger c1 = MIN(self.columns, [self columnAtX:NSMaxX(dirty)]+1);
         NSInteger loR=MIN(self.anchorRow,self.endRow), hiR=MAX(self.anchorRow,self.endRow);
         NSInteger loC=MIN(self.anchorCol,self.endCol), hiC=MAX(self.anchorCol,self.endCol);
         for (NSInteger r=r0; r<r1; r++) for (NSInteger c=c0; c<c1; c++) {
-            NSRect rect=NSMakeRect(kGutter+c*kCol,kRow+r*kRow,kCol,kRow);
+            NSRect rect=NSMakeRect([self columnOrigin:c],kRow+r*kRow,self.columnWidths[c].doubleValue,kRow);
             BOOL selected=self.anchorRow>=0 && r>=loR && r<=hiR && c>=loC && c<=hiC;
             if (selected) { [NSColor.selectedTextBackgroundColor setFill]; NSRectFill(rect); }
             else if (r%2) { [NSColor.alternatingContentBackgroundColors[1] setFill]; NSRectFill(rect); }
@@ -194,12 +246,17 @@ static NSDictionary *ReadWorkbook(NSString *path, NSString **error) {
         [NSColor.controlBackgroundColor setFill];
         NSRectFill(NSMakeRect(visible.origin.x,visible.origin.y,visible.size.width,kRow));
         NSRectFill(NSMakeRect(visible.origin.x,visible.origin.y,kGutter,visible.size.height));
-        for (NSInteger c=c0;c<c1;c++) {
-            NSRect rect=NSMakeRect(kGutter+c*kCol,visible.origin.y,kCol,kRow);
+        /* A partial body redraw can still repaint the frozen strips. Use
+         * viewport ranges here, so it cannot erase unrelated header labels. */
+        NSInteger hc0=[self columnAtX:NSMinX(visible)], hc1=MIN(self.columns,[self columnAtX:NSMaxX(visible)]+1);
+        NSInteger hr0=MAX(0,(NSInteger)((NSMinY(visible)-kRow)/kRow));
+        NSInteger hr1=MIN((NSInteger)self.rows.count,(NSInteger)ceil(NSMaxY(visible)/kRow));
+        for (NSInteger c=hc0;c<hc1;c++) {
+            NSRect rect=NSMakeRect([self columnOrigin:c],visible.origin.y,self.columnWidths[c].doubleValue,kRow);
             [self drawText:ColumnName(c) rect:rect header:YES selected:NO];
             [NSColor.gridColor set]; NSFrameRectWithWidth(rect,0.5);
         }
-        for (NSInteger r=r0;r<r1;r++) {
+        for (NSInteger r=hr0;r<hr1;r++) {
             NSRect rect=NSMakeRect(visible.origin.x,kRow+r*kRow,kGutter,kRow);
             [self drawText:[NSString stringWithFormat:@"%ld",(long)r+1] rect:rect header:YES selected:NO];
         }
@@ -223,11 +280,19 @@ static NSDictionary *ReadWorkbook(NSString *path, NSString **error) {
 - (void)copy:(id)sender { (void)sender; [self.owner copySelection]; }
 - (void)mouseDown:(NSEvent *)event {
     [self.window makeFirstResponder:self];
+    self.resizingColumn=-1;
     if (!self.rows.count || !self.columns) return;
     NSPoint p=[self convertPoint:event.locationInWindow fromView:nil];
+    NSInteger divider=[self dividerAtPoint:p];
+    if (divider>=0) {
+        self.resizingColumn=divider;
+        self.resizeStartX=event.locationInWindow.x;
+        self.resizeStartWidth=self.columnWidths[divider].doubleValue;
+        return;
+    }
     NSRect visible=self.visibleRect;
     BOOL header=p.y<visible.origin.y+kRow, gutter=p.x<visible.origin.x+kGutter;
-    NSInteger row=(p.y-kRow)/kRow, col=(p.x-kGutter)/kCol;
+    NSInteger row=(p.y-kRow)/kRow, col=[self columnAtX:p.x];
     BOOL extend=(event.modifierFlags & NSEventModifierFlagShift)!=0;
     self.dragMode=gutter ? 1 : (header ? 2 : 0);
     if (header && gutter) { [self selectAll:nil]; return; }
@@ -237,13 +302,20 @@ static NSDictionary *ReadWorkbook(NSString *path, NSString **error) {
     self.needsDisplay=YES; [self.owner updateStatus];
 }
 - (void)mouseDragged:(NSEvent *)event {
+    if (self.resizingColumn>=0) {
+        self.columnWidths[self.resizingColumn]=@(MAX(48,MIN(4096,self.resizeStartWidth+event.locationInWindow.x-self.resizeStartX)));
+        [self rebuildColumnEdges]; [self.owner sizeGrid];
+        [self.window invalidateCursorRectsForView:self];
+        return;
+    }
     if (self.anchorRow<0) return;
     [self autoscroll:event];
     NSPoint p=[self convertPoint:event.locationInWindow fromView:nil];
-    NSInteger row=(p.y-kRow)/kRow, col=(p.x-kGutter)/kCol;
+    NSInteger row=(p.y-kRow)/kRow, col=[self columnAtX:p.x];
     [self selectRow:self.dragMode==2?(NSInteger)self.rows.count-1:row
             column:self.dragMode==1?self.columns-1:col extend:YES];
 }
+- (void)mouseUp:(NSEvent *)event { (void)event; self.resizingColumn=-1; }
 - (NSMenu *)menuForEvent:(NSEvent *)event {
     (void)event;
     NSMenu *menu=[[NSMenu alloc] initWithTitle:@"Table"];
@@ -253,10 +325,11 @@ static NSDictionary *ReadWorkbook(NSString *path, NSString **error) {
 }
 - (void)revealSelection {
     if (self.endRow<0) return;
-    NSRect cell=NSMakeRect(kGutter+self.endCol*kCol,kRow+self.endRow*kRow,kCol,kRow);
+    NSRect cell=NSMakeRect([self columnOrigin:self.endCol],kRow+self.endRow*kRow,self.columnWidths[self.endCol].doubleValue,kRow);
     NSRect b=self.visibleRect;
     if (cell.origin.x<b.origin.x+kGutter) b.origin.x=MAX(0,cell.origin.x-kGutter);
-    if (NSMaxX(cell)>NSMaxX(b)) b.origin.x=NSMaxX(cell)-b.size.width;
+    if (cell.size.width>b.size.width-kGutter) b.origin.x=MAX(0,cell.origin.x-kGutter);
+    else if (NSMaxX(cell)>NSMaxX(b)) b.origin.x=NSMaxX(cell)-b.size.width;
     if (cell.origin.y<b.origin.y+kRow) b.origin.y=MAX(0,cell.origin.y-kRow);
     if (NSMaxY(cell)>NSMaxY(b)) b.origin.y=NSMaxY(cell)-b.size.height;
     [self scrollPoint:b.origin]; self.needsDisplay=YES;
@@ -328,11 +401,28 @@ static NSDictionary *ReadWorkbook(NSString *path, NSString **error) {
     self.status=[NSTextField labelWithString:@"Loading…"];
     self.status.font=[NSFont systemFontOfSize:11]; self.status.lineBreakMode=NSLineBreakByTruncatingTail;
     [self addSubview:self.status];
+    self.cellAddress=[NSTextField labelWithString:@"Cell"];
+    self.cellAddress.font=[NSFont monospacedDigitSystemFontOfSize:11 weight:NSFontWeightMedium];
+    [self addSubview:self.cellAddress];
+    self.cellScroll=[[NSScrollView alloc] initWithFrame:NSZeroRect];
+    self.cellScroll.hasVerticalScroller=YES; self.cellScroll.autohidesScrollers=YES;
+    self.cellScroll.borderType=NSBezelBorder;
+    self.cellContent=[[TVCellContent alloc] initWithFrame:NSZeroRect];
+    self.cellContent.editable=NO; self.cellContent.selectable=NO;
+    self.cellContent.richText=NO; self.cellContent.font=[NSFont systemFontOfSize:13];
+    self.cellContent.textContainerInset=NSMakeSize(5,5);
+    self.cellContent.verticallyResizable=YES; self.cellContent.horizontallyResizable=NO;
+    self.cellContent.autoresizingMask=NSViewWidthSizable;
+    self.cellContent.textContainer.widthTracksTextView=YES;
+    self.cellContent.textColor=NSColor.labelColor;
+    self.cellContent.backgroundColor=NSColor.textBackgroundColor;
+    [self.cellContent setAccessibilityLabel:@"Active cell value"];
+    self.cellScroll.documentView=self.cellContent; [self addSubview:self.cellScroll];
     self.scroll=[[NSScrollView alloc] initWithFrame:NSZeroRect];
     self.scroll.hasVerticalScroller=YES; self.scroll.hasHorizontalScroller=YES;
     self.scroll.autohidesScrollers=YES;
     self.grid=[[TVGrid alloc] initWithFrame:NSZeroRect]; self.grid.owner=self;
-    self.grid.anchorRow=self.grid.endRow=-1; self.grid.rows=@[];
+    self.grid.anchorRow=self.grid.endRow=-1; self.grid.rows=@[]; [self.grid resetColumnWidths];
     self.scroll.documentView=self.grid; [self addSubview:self.scroll];
     self.scroll.contentView.postsBoundsChangedNotifications=YES;
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(scrolled:)
@@ -344,21 +434,62 @@ static NSDictionary *ReadWorkbook(NSString *path, NSString **error) {
     CGFloat w=self.bounds.size.width,h=self.bounds.size.height;
     self.sheetsMenu.frame=NSMakeRect(8,5,MAX(40,MIN(300,w-124)),26);
     self.clipboardButton.frame=NSMakeRect(MAX(50,w-108),5,100,26);
-    self.scroll.frame=NSMakeRect(0,36,w,MAX(0,h-62));
+    CGFloat maximum=MIN(80,MAX(0,h-140)), valueWidth=MAX(0,w-68);
+    /* Measure with the actual text container, font and wrapping width. First
+     * give the scroll view its maximum viewport so legacy scroller space is
+     * accounted for when long content needs a scrollbar. */
+    self.cellScroll.frame=NSMakeRect(60,MAX(36,h-30-maximum),valueWidth,maximum);
+    self.cellContent.frameSize=NSMakeSize(self.cellScroll.contentSize.width,MAX(1,maximum));
+    __block CGFloat textHeight=0;
+    Masked(^{
+        NSLayoutManager *manager=self.cellContent.layoutManager;
+        NSTextContainer *container=self.cellContent.textContainer;
+        [manager ensureLayoutForTextContainer:container];
+        textHeight=MAX(NSMaxY([manager usedRectForTextContainer:container]),
+            [manager defaultLineHeightForFont:self.cellContent.font]);
+        if (manager.extraLineFragmentTextContainer==container)
+            textHeight=MAX(textHeight,NSMaxY(manager.extraLineFragmentRect));
+        textHeight=ceil(textHeight+2*self.cellContent.textContainerInset.height);
+    });
+    CGFloat borderHeight=maximum-self.cellScroll.contentSize.height;
+    CGFloat valueHeight=MIN(maximum,ceil(textHeight+borderHeight));
+    CGFloat oldGridHeight=self.scroll.frame.size.height;
+    self.scroll.frame=NSMakeRect(0,36,w,MAX(0,h-70-valueHeight));
+    self.cellAddress.frame=NSMakeRect(8,MAX(36,h-28-valueHeight),48,18);
+    self.cellScroll.frame=NSMakeRect(60,MAX(36,h-30-valueHeight),MAX(0,w-68),valueHeight);
+    self.cellScroll.hidden=self.cellAddress.hidden=valueHeight<24;
+    self.cellContent.frameSize=NSMakeSize(self.cellScroll.contentSize.width,MAX(self.cellScroll.contentSize.height,textHeight));
     self.status.frame=NSMakeRect(8,MAX(36,h-22),MAX(0,w-16),18);
     [self sizeGrid];
+    if (self.scroll.frame.size.height<oldGridHeight && self.grid.anchorRow>=0 &&
+        self.grid.anchorRow==self.grid.endRow && self.grid.anchorCol==self.grid.endCol)
+        [self.grid revealSelection];
 }
 - (void)sizeGrid {
-    self.grid.frameSize=NSMakeSize(MAX(self.scroll.contentSize.width,kGutter+self.grid.columns*kCol),
+    self.grid.frameSize=NSMakeSize(MAX(self.scroll.contentSize.width,self.grid.columnEdges.lastObject.doubleValue),
         MAX(self.scroll.contentSize.height,kRow+self.grid.rows.count*kRow));
     self.grid.needsDisplay=YES;
 }
-- (void)scrolled:(NSNotification *)note { (void)note; self.grid.needsDisplay=YES; }
+- (void)scrolled:(NSNotification *)note {
+    (void)note;
+    [self.grid setNeedsDisplayInRect:self.grid.visibleRect];
+    [self.window invalidateCursorRectsForView:self.grid];
+    /* NSClipView may copy old pixels AFTER its bounds notification. Redraw the
+     * frozen headers after that operation, even when only a thin strip was exposed. */
+    if (self.headerRedrawPending) return;
+    self.headerRedrawPending=YES;
+    __weak TVView *weak=self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        TVView *view=weak; view.headerRedrawPending=NO;
+        if (view && !view.closed) [view.grid setNeedsDisplayInRect:view.grid.visibleRect];
+    });
+}
 - (void)openPath:(NSString *)path {
     NSUInteger token=++self.generation;
     self.loading=YES; self.sheets=@[]; [self.pendingSearches removeAllObjects];
     [self.sheetsMenu removeAllItems]; self.sheetsMenu.enabled=NO;
     self.grid.rows=@[]; self.grid.columns=0; self.grid.anchorRow=self.grid.endRow=-1;
+    [self.grid resetColumnWidths]; self.cellContent.string=@""; self.cellAddress.stringValue=@"Cell"; self.needsLayout=YES;
     self.clipboardButton.enabled=NO; self.status.stringValue=@"Loading spreadsheet…"; [self sizeGrid];
     __weak TVView *weak=self;
     static dispatch_queue_t queue; static dispatch_once_t once;
@@ -388,7 +519,7 @@ static NSDictionary *ReadWorkbook(NSString *path, NSString **error) {
     NSInteger index=self.sheetsMenu.indexOfSelectedItem;
     if (index<0 || index>=(NSInteger)self.sheets.count) return;
     NSDictionary *sheet=self.sheets[index];
-    self.grid.rows=sheet[@"rows"]; self.grid.columns=[sheet[@"columns"] integerValue];
+    self.grid.rows=sheet[@"rows"]; self.grid.columns=[sheet[@"columns"] integerValue]; [self.grid resetColumnWidths];
     self.grid.anchorRow=self.grid.endRow=-1; self.grid.anchorCol=self.grid.endCol=0;
     [self sizeGrid]; [self.grid scrollPoint:NSZeroPoint];
     [self.grid selectRow:0 column:0 extend:NO];
@@ -404,6 +535,17 @@ static NSDictionary *ReadWorkbook(NSString *path, NSString **error) {
     self.status.stringValue=[NSString stringWithFormat:@"%lu rows × %ld columns%@%@ · TableView %s",
         (unsigned long)self.grid.rows.count,(long)self.grid.columns,selection,limited?@" · Preview truncated":@"",TV_VERSION];
     self.status.toolTip=self.status.stringValue;
+    BOOL active=self.grid.endRow>=0 && self.grid.endRow<(NSInteger)self.grid.rows.count && self.grid.endCol>=0 && self.grid.endCol<self.grid.columns;
+    NSString *value=active?self.grid.rows[self.grid.endRow][self.grid.endCol]:@"";
+    NSString *address=active?[NSString stringWithFormat:@"%@%ld",ColumnName(self.grid.endCol),(long)self.grid.endRow+1]:@"Cell";
+    BOOL changed=![self.cellAddress.stringValue isEqual:address] || ![self.cellContent.string isEqual:value];
+    self.cellAddress.stringValue=address;
+    if (changed) {
+        if (![self.cellContent.string isEqual:value]) self.cellContent.string=value;
+        self.needsLayout=YES;
+        [self layoutSubtreeIfNeeded];
+        [self.cellContent scrollRangeToVisible:NSMakeRange(0,0)];
+    }
 }
 - (BOOL)copySelection {
     NSString *text=[self.grid selectedText];

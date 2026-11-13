@@ -23,3 +23,21 @@ The plain terminal sandbox lacks macOS pasteboard/window-event services. Its
 clipboard and event-delivery assertions fail with XPC connection errors; those
 checks were therefore run successfully as native test apps in the desktop
 session. This is an environment distinction, not a skipped assertion.
+
+## TableView 0.2.0 feature verification (unreleased)
+
+- Universal build, exported ABI, ad-hoc signature and registration checks pass.
+- Desktop real-artifact harness: 79 assertions pass, covering divider dragging,
+  width bounds, hit testing and copying after resize, wide-cell reveal, full
+  multiline/long values, Find updates and clearing stale details. Adaptive panel
+  checks cover single-line height, multiline growth, wrapping after narrowing the
+  window, the 80-point cap, and shrinking without stale scroll space.
+- Keyboard/focus harness: 11 assertions pass, including Esc, DC navigation keys
+  and Quick View focus.
+- Real Double Commander, isolated profile and synthetic `details.csv`: widen the
+  Description column, navigate with arrows, read its full wrapped value, and
+  scroll the multiline Notes value to its final line. Coordinate headers remain
+  visible after horizontal scrolling settles. Esc closes the viewer.
+- Real Double Commander: single-line values use a compact panel; a wrapped
+  description expands it; multiline notes reach the original 80-point maximum
+  with vertical scrolling.

@@ -78,6 +78,26 @@ int main(int argc,char **argv) {
         Check([Rows()[2][2] isEqual:@"line one\nline two"],"quoted multiline cell preserved");
         Check([Rows()[3][0] isEqual:@"00123"],"CSV leading zeros preserved");
         Check([Rows()[3][2] isEqual:@"<script>alert(1)</script>"],"markup remains literal text");
+        Select(grid,2,2,NO);
+        NSTextView *detail=[view valueForKey:@"cellContent"];
+        Check([detail.string isEqual:@"line one\nline two"] && [[[view valueForKey:@"cellAddress"] stringValue] isEqual:@"C3"],"active cell panel preserves full multiline value and address");
+        Check(!detail.acceptsFirstResponder,"value panel leaves keyboard focus with grid");
+        NSScrollView *valuePanel=[view valueForKey:@"cellScroll"];
+        CGFloat multilineHeight=valuePanel.frame.size.height;
+        Select(grid,1,0,NO);
+        CGFloat singleHeight=valuePanel.frame.size.height;
+        Check(singleHeight>=24 && singleHeight<40 && multilineHeight>singleHeight && multilineHeight<=80,"value panel uses one line and grows for multiline cells");
+        next(NULL,handle,(char*)File(@"details.csv").fileSystemRepresentation,0); Wait(view);
+        Select(grid,1,1,NO); CGFloat wideHeight=valuePanel.frame.size.height;
+        [view setFrameSize:NSMakeSize(420,500)]; [view layoutSubtreeIfNeeded];
+        Check(valuePanel.frame.size.height>wideHeight && valuePanel.frame.size.height<=80,"value panel adapts to narrower wrapping width");
+        Select(grid,1,2,NO);
+        Check(valuePanel.frame.size.height==80 && detail.frame.size.height>valuePanel.contentSize.height,"long multiline value caps panel and remains scrollable");
+        Select(grid,0,0,NO);
+        Check(valuePanel.frame.size.height<40 && detail.frame.size.height<=valuePanel.contentSize.height+1,"short value shrinks panel and removes stale scroll space");
+        [view setFrameSize:NSMakeSize(800,500)]; [view layoutSubtreeIfNeeded];
+        next(NULL,handle,(char*)File(@"sample.csv").fileSystemRepresentation,0); Wait(view);
+
         Select(grid,1,0,NO); Select(grid,2,1,YES);
         Check([[grid valueForKey:@"anchorRow"] integerValue]==1 && [[grid valueForKey:@"endCol"] integerValue]==1,"Shift-click rectangular range");
         Check(command(handle,lc_copy,0)==0,"copy command accepted");
@@ -92,6 +112,7 @@ int main(int argc,char **argv) {
         Check([[grid valueForKey:@"endRow"] integerValue]==3 && [[grid valueForKey:@"endCol"] integerValue]==2,"select-all covers data only");
         uint16_t beta[]={'B','e','t','a',0}; search(handle,beta,lcs_findfirst);
         Check([[grid valueForKey:@"endRow"] integerValue]==2 && [[grid valueForKey:@"endCol"] integerValue]==0,"ABI find locates cell");
+        Check([detail.string isEqual:@"Beta"],"Find updates active cell panel");
         uint16_t name[]={'n','a','m','e',0}; search(handle,name,lcs_findfirst|lcs_backwards);
         Check([[grid valueForKey:@"endRow"] integerValue]==0,"backward search and case folding");
         for(NSString *ext in @[@"xlsx",@"xlsm",@"xlsb",@"xls",@"ods",@"fods",@"dif",@"slk",@"dbf"]) {
@@ -104,6 +125,31 @@ int main(int argc,char **argv) {
                 Check([Rows()[0][0] isEqual:@"Other sheet"],"worksheet switching changes data");
             }
         }
+        next(NULL,handle,(char*)File(@"sample.csv").fileSystemRepresentation,0); Wait(view);
+        Select(grid,1,0,NO);
+        __block NSPoint down=[grid convertPoint:NSMakePoint(216,grid.visibleRect.origin.y+13) toView:nil];
+        NSEvent *(^Drag)(CGFloat,NSEventType)=^NSEvent*(CGFloat delta,NSEventType type){
+            return [NSEvent mouseEventWithType:type location:NSMakePoint(down.x+delta,down.y) modifierFlags:0 timestamp:0 windowNumber:win.windowNumber context:nil eventNumber:2 clickCount:1 pressure:1];
+        };
+        [grid mouseDown:Drag(0,NSEventTypeLeftMouseDown)];
+        [grid mouseDragged:Drag(200,NSEventTypeLeftMouseDragged)];
+        [grid mouseUp:Drag(200,NSEventTypeLeftMouseUp)];
+        Check([[[grid valueForKey:@"columnWidths"] objectAtIndex:0] doubleValue]==360 && [[grid valueForKey:@"endRow"] integerValue]==1,"dragging divider widens column without changing selection");
+        NSPoint body=[grid convertPoint:NSMakePoint(440,26+26+12) toView:nil];
+        [grid mouseDown:[NSEvent mouseEventWithType:NSEventTypeLeftMouseDown location:body modifierFlags:0 timestamp:0 windowNumber:win.windowNumber context:nil eventNumber:3 clickCount:1 pressure:1]];
+        Check([[grid valueForKey:@"endCol"] integerValue]==1 && [detail.string isEqual:@"42"],"cell hit testing follows resized columns");
+        command(handle,lc_copy,0);
+        Check([[NSPasteboard.generalPasteboard stringForType:NSPasteboardTypeString] isEqual:@"42"],"copy after column resize retains correct value");
+        down=[grid convertPoint:NSMakePoint(416,grid.visibleRect.origin.y+13) toView:nil];
+        [grid mouseDown:Drag(0,NSEventTypeLeftMouseDown)]; [grid mouseDragged:Drag(-10000,NSEventTypeLeftMouseDragged)]; [grid mouseUp:Drag(-10000,NSEventTypeLeftMouseUp)];
+        Check([[[grid valueForKey:@"columnWidths"] objectAtIndex:0] doubleValue]==48,"column shrinking stops at readable minimum");
+        down=[grid convertPoint:NSMakePoint(104,grid.visibleRect.origin.y+13) toView:nil];
+        [grid mouseDown:Drag(0,NSEventTypeLeftMouseDown)]; [grid mouseDragged:Drag(10000,NSEventTypeLeftMouseDragged)]; [grid mouseUp:Drag(10000,NSEventTypeLeftMouseUp)];
+        Check([[[grid valueForKey:@"columnWidths"] objectAtIndex:0] doubleValue]==4096,"column growth remains bounded");
+        Select(grid,1,0,NO); ((void (*)(id,SEL))objc_msgSend)(grid,NSSelectorFromString(@"revealSelection"));
+        Check(grid.visibleRect.origin.x==0,"revealing a wide cell keeps its leading edge visible");
+        next(NULL,handle,(char*)File(@"sample.csv").fileSystemRepresentation,0); Wait(view);
+        Check([[[grid valueForKey:@"columnWidths"] objectAtIndex:0] doubleValue]==160,"new workbook resets column widths");
         next(NULL,handle,(char*)File(@"sample.numbers").fileSystemRepresentation,0);
         Check(Wait(view) && Rows().count>=2 && [Rows()[1][0] isEqual:@"Apple sample"] && [Rows()[1][1] isEqual:@"42"],"Numbers IWA file decoded");
         for(NSString *name in @[@"semicolon.csv",@"utf16.tsv",@"cp1252.csv"]) {
@@ -119,6 +165,7 @@ int main(int argc,char **argv) {
         Check(Rows().count==1 && [Rows()[0] count]==512 && [[[view valueForKey:@"status"] stringValue] containsString:@"truncated"],"wide CSV bounded before materializing extra cells");
         next(NULL,handle,(char*)File(@"long.csv").fileSystemRepresentation,0); Wait(view);
         Check([Rows()[0][0] length]==32768,"individual text value limit");
+        Check(detail.string.length==32768,"value panel includes entire bounded long cell without ellipsis");
         next(NULL,handle,(char*)File(@"incomplete.csv").fileSystemRepresentation,0); Wait(view);
         Check(Rows().count==0,"incomplete quoted field reports error");
         next(NULL,handle,(char*)File(@"large.csv").fileSystemRepresentation,0); Wait(view);
@@ -141,6 +188,7 @@ int main(int argc,char **argv) {
         Check(Rows().count>0 && [Rows()[0][0] containsString:@"xml"],"CSV cannot invoke XML workbook decoder");
         next(NULL,handle,(char*)File(@"empty.csv").fileSystemRepresentation,0); Wait(view);
         Check(Rows().count==0,"empty file does not invent cells");
+        Check(detail.string.length==0 && [[[view valueForKey:@"cellAddress"] stringValue] isEqual:@"Cell"],"empty file clears previous cell details");
         next(NULL,handle,(char*)File(@"large.csv").fileSystemRepresentation,0);
         next(NULL,handle,(char*)File(@"sample.tsv").fileSystemRepresentation,0); Wait(view);
         Check(Rows().count==2 && [Rows()[1][0] isEqual:@"Alpha"],"superseded load cannot replace current document");
