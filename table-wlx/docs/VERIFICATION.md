@@ -41,3 +41,14 @@ session. This is an environment distinction, not a skipped assertion.
 - Real Double Commander: single-line values use a compact panel; a wrapped
   description expands it; multiline notes reach the original 80-point maximum
   with vertical scrolling.
+
+## TableView 0.2.1 frozen header verification
+
+- Frozen headers are a layer-backed sibling of the scroll view. Real-artifact
+  checks cover a fixed viewport during two-axis scrolling, body click-through,
+  row selection and copied values after scrolling, and divider resizing through
+  the overlay. The existing parser, selection, details and keyboard checks pass.
+- Verified in Double Commander 1.2.11 with an isolated profile and synthetic
+  80-row, 12-column CSV: wheel scrolling, horizontal scrolling through the native
+  scroll action, PgDn and Esc. Headers stay at the viewport edges and align with
+  visible cells after scrolling.

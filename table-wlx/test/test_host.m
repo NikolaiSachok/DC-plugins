@@ -196,6 +196,42 @@ int main(int argc,char **argv) {
         next(NULL,handle,(char*)File(@"sample.csv").fileSystemRepresentation,0);
         search(handle,alpha,lcs_findfirst); search(handle,beta,0); Wait(view);
         Check([[grid valueForKey:@"endRow"] integerValue]==2,"searches during loading stay ordered");
+        /* Exercise the actual viewport overlay, including event forwarding.
+         * Its frame must stay fixed while the document bounds move. */
+        next(NULL,handle,(char*)File(@"headers.csv").fileSystemRepresentation,0); Wait(view);
+        NSView *headers=[view valueForKey:@"headers"];
+        NSScrollView *scroll=[view valueForKey:@"scroll"];
+        Check(headers.superview==view && headers.superview!=grid && headers.wantsLayer,
+            "frozen headers live outside the scrolling document");
+        NSRect headerFrame=headers.frame;
+        [scroll.contentView scrollToPoint:NSMakePoint(30,26)]; [scroll reflectScrolledClipView:scroll.contentView];
+        Check(NSEqualRects(headers.frame,headerFrame),"header viewport stays fixed synchronously during scrolling");
+        NSPoint hp=[headers convertPoint:NSMakePoint(80,13) toView:headers.superview];
+        Check([headers hitTest:hp]==headers,"header strip intercepts clicks");
+        hp=[headers convertPoint:NSMakePoint(80,60) toView:headers.superview];
+        Check([headers hitTest:hp]==nil,"body clicks pass through header overlay");
+        NSPoint rowPoint=[headers convertPoint:NSMakePoint(20,39) toView:nil];
+        [headers mouseDown:[NSEvent mouseEventWithType:NSEventTypeLeftMouseDown location:rowPoint modifierFlags:0 timestamp:0 windowNumber:win.windowNumber context:nil eventNumber:4 clickCount:1 pressure:1]];
+        Check([[grid valueForKey:@"anchorCol"] integerValue]==0 && [[grid valueForKey:@"endCol"] integerValue]==11,
+            "row header overlay forwards selection to the grid after scrolling");
+        command(handle,lc_copy,0);
+        Check([[NSPasteboard.generalPasteboard stringForType:NSPasteboardTypeString] hasPrefix:@"R1C0\tR1C1\t"],
+            "row header after scrolling copies the correct row");
+        scroll.scrollerStyle=NSScrollerStyleLegacy; [scroll tile]; Pump(0.1);
+        Check(NSEqualRects(headers.frame,[view convertRect:scroll.contentView.bounds fromView:scroll.contentView]),
+            "header viewport follows legacy scroller geometry without a parent resize");
+        NSPoint scrollbarPoint=NSMakePoint(NSMaxX(headers.frame)+2,NSMinY(headers.frame)+4);
+        Check([headers hitTest:scrollbarPoint]==nil,"header overlay never intercepts legacy scrollbars");
+        scroll.scrollerStyle=NSScrollerStyleOverlay; [scroll tile]; Pump(0.1);
+        Check(NSEqualRects(headers.frame,[view convertRect:scroll.contentView.bounds fromView:scroll.contentView]),
+            "header viewport follows return to overlay scrollers");
+        [grid scrollPoint:NSZeroPoint];
+        down=[grid convertPoint:NSMakePoint(216,13) toView:nil];
+        [headers mouseDown:Drag(0,NSEventTypeLeftMouseDown)];
+        [headers mouseDragged:Drag(50,NSEventTypeLeftMouseDragged)];
+        [headers mouseUp:Drag(50,NSEventTypeLeftMouseUp)];
+        Check([[[grid valueForKey:@"columnWidths"] objectAtIndex:0] doubleValue]==210,
+            "header overlay forwards column-divider resizing");
         [view setFrameSize:NSMakeSize(480,320)]; [view layoutSubtreeIfNeeded];
         NSBitmapImageRep *rep=[view bitmapImageRepForCachingDisplayInRect:[view bounds]];
         [view cacheDisplayInRect:[view bounds] toBitmapImageRep:rep];

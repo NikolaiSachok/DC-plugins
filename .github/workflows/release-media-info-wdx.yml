@@ -49,6 +49,9 @@ jobs:
 
             Adds custom-column / tooltip fields for image & video resolution, audio & video duration, bitrate, codecs, and PDF page count. No dependencies, no network.
 
+            Automatic metadata skips online-only macOS cloud placeholders and network
+            volumes; downloaded files in cloud folders keep their metadata.
+
             **Install (no Xcode needed):** unzip, quit Double Commander, then run `./install.sh`.
             Verify the download with the included `.sha256`.
           files: |
