@@ -58,7 +58,11 @@ the full note.
 
 `install.sh` should be idempotent, back up `doublecmd.xml`, and place the entry so
 detection order is correct (DC uses the first plugin whose detect string matches —
-mind the catch-all MacPreview `(EXT!="")`). Quit DC before editing its config.
+mind the catch-all MacPreview `(EXT!="")`). Refuse to install while DC is running,
+before building, copying assets or editing config. Replace the binary by copying
+into a unique temporary file in the destination directory and atomically renaming
+it over the installed file; never overwrite a potentially mapped Mach-O inode.
+Clean up the temporary file on failure (see `book-wlx/install.sh`).
 
 ## 5. Wire it into the repo standard
 

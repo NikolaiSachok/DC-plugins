@@ -10,6 +10,9 @@ independently and tagged below.
 - **table-wlx 0.2.1:** Frozen coordinate headers now render outside the scrolling
   document, keeping them stationary during animated scrolling. Row/column selection
   and column resizing continue to use the grid geometry. Closes #45.
+- BookView, MarkdownView and MediaInfo installers refuse updates while Double
+  Commander is running and replace binaries atomically instead of rewriting a
+  potentially mapped file. Closes #35.
 
 ## table-wlx 0.2.0 — 2026-11-14
 

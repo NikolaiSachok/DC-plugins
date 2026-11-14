@@ -13,6 +13,14 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 DEST="$HOME/Library/Preferences/doublecmd/plugins/wdx/MediaInfo"
 CONFIG="$HOME/Library/Preferences/doublecmd/doublecmd.xml"
 
+require_dc_closed() {
+    if pgrep -f "MacOS/doublecmd" >/dev/null; then
+        echo "!! Double Commander is running. Quit it, then re-run this script."
+        exit 1
+    fi
+}
+require_dc_closed
+
 if [ -f "$HERE/MediaInfo.wdx" ]; then
     WDX="$HERE/MediaInfo.wdx"             # prebuilt release bundle
 else
@@ -23,13 +31,15 @@ fi
 
 echo "==> Installing to $DEST"
 mkdir -p "$DEST"
-cp -f "$WDX" "$DEST/MediaInfo.wdx"
+# Never rewrite a Mach-O inode that another process may still have mapped.
+STAGED="$(mktemp "$DEST/.MediaInfo.wdx.XXXXXX")"
+trap 'rm -f "$STAGED"' EXIT
+cp -f "$WDX" "$STAGED"
+mv -f "$STAGED" "$DEST/MediaInfo.wdx"
 
-if pgrep -f "MacOS/doublecmd" >/dev/null; then
-    echo "!! Double Commander is running. Quit it, then re-run this script to register."
-    exit 1
-fi
 
+
+require_dc_closed
 echo "==> Registering in $CONFIG"
 python3 "$HERE/register_plugin.py" "$CONFIG" "$DEST/MediaInfo.wdx"
 
