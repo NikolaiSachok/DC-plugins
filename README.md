@@ -21,7 +21,7 @@ reproducible and documented.
 | [`media-info-wdx`](media-info-wdx/) | WDX (content) | Shows media metadata in custom **columns** & tooltips — image/video **resolution**, audio/video **duration**, bitrate, codecs, PDF **page count**, plus an adaptive `Summary` field. Native ImageIO / AVFoundation / CGPDF; no deps, no network. | ✅ stable |
 | [`book-wlx`](book-wlx/) | WLX (lister) | Reads **EPUB and FictionBook (FB2) e-books** in the viewer (F3) — contents sidebar, continuous reflowable text, cover, reading progress, adjustable text size, light/dark/sepia. Served straight out of the container in-process: nothing unpacked to disk, nothing fetched from the network. | ✅ stable |
 | [`image-wlx`](image-wlx/) | WLX (lister) | Views **images and PDFs** in the viewer (F3) and Quick View with real **zoom and pan** — pinch, Cmd+scroll, Cmd+= / Cmd+-, drag — and **vector-sharp SVG** at any zoom. 60+ formats via ImageIO (HEIC, WebP, AVIF, RAW, animated GIF…); continuous PDF scrolling and **PDF text selection/copy**; pixel size, format and file size in the toolbar. | 🆕 new |
-| [`table-wlx`](table-wlx/) | WLX (lister) | Previews **CSV/TSV, Excel, Apple Numbers and OpenDocument spreadsheets** as a native grid. Select cells or rectangular ranges, copy TSV values, switch worksheets and search. Offline, read-only. | 🆕 new |
+| [`table-wlx`](table-wlx/) | WLX (lister) | Previews **CSV/TSV, Excel, Apple Numbers and OpenDocument spreadsheets** as a native grid. Select cells or rectangular ranges, copy TSV values, resize columns, read full cell values in an adaptive panel, switch worksheets and search. Offline, read-only. | 🆕 new |
 
 More plugins will follow; the repo layout and the [contributor guide](CONTRIBUTING.md)
 are built for that.
@@ -48,8 +48,9 @@ text, Cmd+C to copy it, or Option-drag to pan. Image-only scans require OCR else
 
 **TableView** opens CSV/TSV, Excel, modern single-file Numbers and ODS/FODS files
 as a native grid. Select cells, rows, columns or a rectangular range and press
-Cmd+C to copy values as TSV. Switch worksheets and search with Cmd+F. It is a
-bounded, read-only data preview: formulas use cached results, and charts and
+Cmd+C to copy values as TSV. Drag header dividers to resize columns; the adaptive
+value panel shows the active cell's full preview value. Switch worksheets and
+search with Cmd+F. It is a bounded, read-only data preview: formulas use cached results, and charts and
 spreadsheet page layouts are not rendered.
 
 ## Quick start
@@ -60,7 +61,7 @@ for these bundles. Unzip, quit Double Commander, then run `./install.sh`.
 
 | Plugin | Current release |
 |---|---|
-| TableView | [0.1.0](https://github.com/NikolaiSachok/DC-plugins/releases/tag/table-wlx-v0.1.0) |
+| TableView | [0.2.0](https://github.com/NikolaiSachok/DC-plugins/releases/tag/table-wlx-v0.2.0) |
 | ImageView | [0.2.0](https://github.com/NikolaiSachok/DC-plugins/releases/tag/image-wlx-v0.2.0) |
 | MarkdownView | [0.5.1](https://github.com/NikolaiSachok/DC-plugins/releases/tag/markdown-wlx-v0.5.1) |
 | BookView | [0.2.0](https://github.com/NikolaiSachok/DC-plugins/releases/tag/book-wlx-v0.2.0) |

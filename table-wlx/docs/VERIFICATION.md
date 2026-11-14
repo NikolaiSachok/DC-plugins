@@ -24,7 +24,7 @@ clipboard and event-delivery assertions fail with XPC connection errors; those
 checks were therefore run successfully as native test apps in the desktop
 session. This is an environment distinction, not a skipped assertion.
 
-## TableView 0.2.0 feature verification (unreleased)
+## TableView 0.2.0 feature verification (release 2026-11-14)
 
 - Universal build, exported ABI, ad-hoc signature and registration checks pass.
 - Desktop real-artifact harness: 79 assertions pass, covering divider dragging,

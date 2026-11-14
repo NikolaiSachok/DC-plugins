@@ -1,6 +1,6 @@
 name: Release table-wlx
 
-# Tag a release: git tag table-wlx-v0.1.0 && git push origin table-wlx-v0.1.0
+# Tag a release: git tag table-wlx-v0.2.0 && git push origin table-wlx-v0.2.0
 on:
   push:
     tags:
@@ -52,7 +52,8 @@ jobs:
 
             Read-only native previews for CSV, TSV, Excel, Apple Numbers and OpenDocument
             spreadsheets, plus DIF, SYLK and dBASE. Select cells and rectangular ranges,
-            copy values as TSV, switch worksheets and search. No Office installation
+            copy values as TSV, resize columns, inspect full cell values in an adaptive
+            panel, switch worksheets and search. No Office installation
             or network connection required. The parser is embedded in the binary.
 
             **Install (no Xcode needed):** unzip, quit Double Commander, then run `./install.sh`.
