@@ -13,6 +13,14 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 DEST="$HOME/Library/Preferences/doublecmd/plugins/wlx/MarkdownView"
 CONFIG="$HOME/Library/Preferences/doublecmd/doublecmd.xml"
 
+require_dc_closed() {
+    if pgrep -f "MacOS/doublecmd" >/dev/null; then
+        echo "!! Double Commander is running. Quit it, then re-run this script."
+        exit 1
+    fi
+}
+require_dc_closed
+
 if [ -f "$HERE/MarkdownView.wlx" ]; then
     WLX="$HERE/MarkdownView.wlx"          # prebuilt release bundle
     ASSETS="$HERE/assets"
@@ -23,19 +31,23 @@ else
     ASSETS="$HERE/assets"
 fi
 
+# A source build may have taken long enough for DC to start.
+require_dc_closed
 echo "==> Installing files to $DEST"
 mkdir -p "$DEST"
-cp -f "$WLX" "$DEST/MarkdownView.wlx"
+# Never rewrite a Mach-O inode that another process may still have mapped.
+STAGED="$(mktemp "$DEST/.MarkdownView.wlx.XXXXXX")"
+trap 'rm -f "$STAGED"' EXIT
+cp -f "$WLX" "$STAGED"
+mv -f "$STAGED" "$DEST/MarkdownView.wlx"
 rm -rf "$DEST/assets"
 cp -R "$ASSETS" "$DEST/assets"
 # Ship a sample config without clobbering an existing one.
 [ -f "$HERE/MarkdownView.ini.sample" ] && cp -f "$HERE/MarkdownView.ini.sample" "$DEST/MarkdownView.ini.sample"
 
-if pgrep -f "MacOS/doublecmd" >/dev/null; then
-    echo "!! Double Commander is running. Quit it, then re-run this script to register."
-    exit 1
-fi
 
+
+require_dc_closed
 echo "==> Registering in $CONFIG"
 python3 "$HERE/register_plugin.py" "$CONFIG" "$DEST/MarkdownView.wlx"
 

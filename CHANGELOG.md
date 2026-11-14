@@ -6,6 +6,11 @@ independently and tagged below.
 
 ## [Unreleased]
 
+### Fixed
+- BookView, MarkdownView and MediaInfo installers refuse updates while Double
+  Commander is running and replace binaries atomically instead of rewriting a
+  potentially mapped file. Closes #35.
+
 ## table-wlx 0.2.0 — 2026-11-14
 
 ### Added
