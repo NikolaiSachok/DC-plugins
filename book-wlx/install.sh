@@ -13,10 +13,13 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 DEST="$HOME/Library/Preferences/doublecmd/plugins/wlx/BookView"
 CONFIG="$HOME/Library/Preferences/doublecmd/doublecmd.xml"
 
-if pgrep -f "MacOS/doublecmd" >/dev/null; then
-    echo "!! Double Commander is running. Quit it, then re-run this script."
-    exit 1
-fi
+require_dc_closed() {
+    if pgrep -f "MacOS/doublecmd" >/dev/null; then
+        echo "!! Double Commander is running. Quit it, then re-run this script."
+        exit 1
+    fi
+}
+require_dc_closed
 
 if [ -f "$HERE/BookView.wlx" ]; then
     WLX="$HERE/BookView.wlx"              # prebuilt release bundle
@@ -28,6 +31,8 @@ else
     ASSETS="$HERE/assets"
 fi
 
+# A source build may have taken long enough for DC to start.
+require_dc_closed
 echo "==> Installing files to $DEST"
 mkdir -p "$DEST"
 # Never rewrite a Mach-O inode that another process may still have mapped.
@@ -42,6 +47,7 @@ cp -R "$ASSETS" "$DEST/assets"
 
 
 
+require_dc_closed
 echo "==> Registering in $CONFIG"
 python3 "$HERE/register_plugin.py" "$CONFIG" "$DEST/BookView.wlx"
 

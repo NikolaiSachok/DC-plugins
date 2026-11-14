@@ -13,10 +13,13 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 DEST="$HOME/Library/Preferences/doublecmd/plugins/wdx/MediaInfo"
 CONFIG="$HOME/Library/Preferences/doublecmd/doublecmd.xml"
 
-if pgrep -f "MacOS/doublecmd" >/dev/null; then
-    echo "!! Double Commander is running. Quit it, then re-run this script."
-    exit 1
-fi
+require_dc_closed() {
+    if pgrep -f "MacOS/doublecmd" >/dev/null; then
+        echo "!! Double Commander is running. Quit it, then re-run this script."
+        exit 1
+    fi
+}
+require_dc_closed
 
 if [ -f "$HERE/MediaInfo.wdx" ]; then
     WDX="$HERE/MediaInfo.wdx"             # prebuilt release bundle
@@ -36,6 +39,7 @@ mv -f "$STAGED" "$DEST/MediaInfo.wdx"
 
 
 
+require_dc_closed
 echo "==> Registering in $CONFIG"
 python3 "$HERE/register_plugin.py" "$CONFIG" "$DEST/MediaInfo.wdx"
 
