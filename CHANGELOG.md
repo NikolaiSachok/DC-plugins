@@ -6,6 +6,8 @@ independently and tagged below.
 
 ## [Unreleased]
 
+## table-wlx 0.2.0 — 2026-11-14
+
 ### Added
 - **table-wlx 0.2.0:** Drag column-header dividers to resize columns. A scrollable
   panel below the grid displays the active cell's full preview value, preserving
