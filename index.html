@@ -86,19 +86,19 @@
 
   <p>Five native plugins that fill real gaps in <a href="https://doublecmd.sourceforge.io/">Double Commander</a> on macOS. Each is a universal binary (Apple Silicon + Intel), built with no third-party native dependencies and no network access at view time, and tested against the real built artifact. They use the Total Commander plugin ABI, so they load straight into Double Commander.</p>
 
-  <h2 id="tableview">TableView <span class="tag">WLX · lister · v0.2.0</span></h2>
+  <h2 id="tableview">TableView <span class="tag">WLX · lister · v0.2.1</span></h2>
   <div class="card">
     <p><strong>A native spreadsheet preview with cell selection and copying.</strong> Press <strong>F3</strong> or open Quick View on CSV, Excel, Numbers or OpenDocument files. Select a cell or rectangular range and copy its values into another spreadsheet or a text editor.</p>
     <ul>
       <li><strong>CSV / TSV, XLSX / XLSM / XLSB / XLS, Numbers, ODS / FODS, DIF, SYLK and dBASE</strong></li>
       <li>Drag or Shift-click to select a range; select whole rows, columns or the worksheet; <strong>⌘C</strong> copies TSV values without toolbar text or coordinate headers</li>
-      <li>Worksheet picker, frozen coordinate headers, keyboard navigation and <strong>⌘F</strong> search</li>
+      <li>Worksheet picker, stationary frozen coordinate headers, keyboard navigation and <strong>⌘F</strong> search</li>
       <li>Read-only, bounded previews with formatted numbers/dates and cached formula results; no macros run and formulas are not recalculated</li>
       <li>Modern single-file Numbers documents supported, with each table in the worksheet picker. Charts, spreadsheet page layouts, older Numbers packages and password-protected files are unsupported.</li>
       <li>Offline workbook decoding embedded in the plugin; no Office installation or external converter required</li>
     </ul>
     <p>Drag column dividers to resize columns. An adaptive panel shows the active cell’s full preview value, grows only as needed, and scrolls longer values.</p>
-    <p><a href="https://github.com/NikolaiSachok/DC-plugins/releases/tag/table-wlx-v0.2.0">Download TableView 0.2.0</a> · <a href="https://github.com/NikolaiSachok/DC-plugins/tree/main/table-wlx">Formats, limits and documentation</a></p>
+    <p><a href="https://github.com/NikolaiSachok/DC-plugins/releases/tag/table-wlx-v0.2.1">Download TableView 0.2.1</a> · <a href="https://github.com/NikolaiSachok/DC-plugins/tree/main/table-wlx">Formats, limits and documentation</a></p>
   </div>
 
   <h2 id="imageview">ImageView <span class="tag">WLX · lister · v0.2.0</span></h2>
@@ -159,7 +159,7 @@
     </ul>
   </div>
 
-  <h2 id="mediainfo">MediaInfo <span class="tag">WDX · content</span></h2>
+  <h2 id="mediainfo">MediaInfo <span class="tag">WDX · content · v0.2.1</span></h2>
   <div class="card">
     <p><strong>See image and video resolution (and more) in a Double Commander column.</strong> The bundled QuickLook preview never shows pixel dimensions; this content plugin adds them — plus durations, codecs, and PDF page counts — right in the file listing and tooltips. One adaptive <em>Summary</em> column covers every file type:</p>
     <div class="cols">IMG_0024.jpg    3.6 M    3024 × 4032
@@ -172,16 +172,17 @@ report.pdf      820 K    14 pages</div>
       <li>AVI: resolution, duration, frame rate (self-contained RIFF parser); Matroska/WebM: dimensions, duration and codecs (self-contained EBML parser)</li>
       <li>PDF: page count. Every field is also available as its own sortable column.</li>
     </ul>
+    <p>Automatic metadata skips online-only macOS cloud placeholders and network volumes. Files downloaded locally in cloud folders keep their metadata.</p>
   </div>
 
   <h2 id="install">Install</h2>
   <p>Requires macOS 11 or later. Choose a plugin; versions are independent:</p>
   <ul>
-    <li><a href="https://github.com/NikolaiSachok/DC-plugins/releases/tag/table-wlx-v0.2.0">TableView 0.2.0</a></li>
+    <li><a href="https://github.com/NikolaiSachok/DC-plugins/releases/tag/table-wlx-v0.2.1">TableView 0.2.1</a></li>
     <li><a href="https://github.com/NikolaiSachok/DC-plugins/releases/tag/image-wlx-v0.2.0">ImageView 0.2.0</a></li>
     <li><a href="https://github.com/NikolaiSachok/DC-plugins/releases/tag/markdown-wlx-v0.5.1">MarkdownView 0.5.1</a></li>
     <li><a href="https://github.com/NikolaiSachok/DC-plugins/releases/tag/book-wlx-v0.2.0">BookView 0.2.0</a></li>
-    <li><a href="https://github.com/NikolaiSachok/DC-plugins/releases/tag/media-info-wdx-v0.2.0">MediaInfo 0.2.0</a></li>
+    <li><a href="https://github.com/NikolaiSachok/DC-plugins/releases/tag/media-info-wdx-v0.2.1">MediaInfo 0.2.1</a></li>
   </ul>
   <p>Download your plugin's <a href="https://github.com/NikolaiSachok/DC-plugins/releases">release bundle</a> (no Xcode needed), unzip, quit Double Commander, then run the installer:</p>
   <pre><code>./install.sh</code></pre>
