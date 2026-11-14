@@ -6,6 +6,11 @@ independently and tagged below.
 
 ## [Unreleased]
 
+### Fixed
+- **media-info-wdx 0.2.1:** Skip online-only cloud placeholders and network volumes
+  when extracting automatic metadata. Downloaded files in cloud folders retain
+  metadata; availability is checked before cache lookup and delayed work. Closes #50.
+
 ## table-wlx 0.2.0 — 2026-11-14
 
 ### Added
