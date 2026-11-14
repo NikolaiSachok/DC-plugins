@@ -18,7 +18,7 @@ reproducible and documented.
 | Plugin | Type | What it does | Status |
 |--------|------|--------------|--------|
 | [`markdown-wlx`](markdown-wlx/) | WLX (lister) | Renders Markdown beautifully in DC's viewer (F3) — GitHub-style CSS, syntax highlighting, tables, task lists, **Mermaid diagrams**, **KaTeX math**, configurable light/dark. Search, copy, and print or save as PDF with **Page N of M** footers. Toggle back to raw text anytime. | ✅ stable |
-| [`media-info-wdx`](media-info-wdx/) | WDX (content) | Shows media metadata in custom **columns** & tooltips — image/video **resolution**, audio/video **duration**, bitrate, codecs, PDF **page count**, plus an adaptive `Summary` field. Native ImageIO / AVFoundation / CGPDF; no deps, no network. | ✅ stable |
+| [`media-info-wdx`](media-info-wdx/) | WDX (content) | Shows media metadata in custom **columns** & tooltips — image/video **resolution**, audio/video **duration**, bitrate, codecs, PDF **page count**, plus an adaptive `Summary` field. Skips online-only macOS cloud placeholders and network volumes. Native ImageIO / AVFoundation / CGPDF; no deps, no network. | ✅ stable |
 | [`book-wlx`](book-wlx/) | WLX (lister) | Reads **EPUB and FictionBook (FB2) e-books** in the viewer (F3) — contents sidebar, continuous reflowable text, cover, reading progress, adjustable text size, light/dark/sepia. Served straight out of the container in-process: nothing unpacked to disk, nothing fetched from the network. | ✅ stable |
 | [`image-wlx`](image-wlx/) | WLX (lister) | Views **images and PDFs** in the viewer (F3) and Quick View with real **zoom and pan** — pinch, Cmd+scroll, Cmd+= / Cmd+-, drag — and **vector-sharp SVG** at any zoom. 60+ formats via ImageIO (HEIC, WebP, AVIF, RAW, animated GIF…); continuous PDF scrolling and **PDF text selection/copy**; pixel size, format and file size in the toolbar. | 🆕 new |
 | [`table-wlx`](table-wlx/) | WLX (lister) | Previews **CSV/TSV, Excel, Apple Numbers and OpenDocument spreadsheets** as a native grid. Select cells or rectangular ranges, copy TSV values, resize columns, read full cell values in an adaptive panel, switch worksheets and search. Offline, read-only. | 🆕 new |
@@ -61,11 +61,11 @@ for these bundles. Unzip, quit Double Commander, then run `./install.sh`.
 
 | Plugin | Current release |
 |---|---|
-| TableView | [0.2.0](https://github.com/NikolaiSachok/DC-plugins/releases/tag/table-wlx-v0.2.0) |
+| TableView | [0.2.1](https://github.com/NikolaiSachok/DC-plugins/releases/tag/table-wlx-v0.2.1) |
 | ImageView | [0.2.0](https://github.com/NikolaiSachok/DC-plugins/releases/tag/image-wlx-v0.2.0) |
 | MarkdownView | [0.5.1](https://github.com/NikolaiSachok/DC-plugins/releases/tag/markdown-wlx-v0.5.1) |
 | BookView | [0.2.0](https://github.com/NikolaiSachok/DC-plugins/releases/tag/book-wlx-v0.2.0) |
-| MediaInfo | [0.2.0](https://github.com/NikolaiSachok/DC-plugins/releases/tag/media-info-wdx-v0.2.0) |
+| MediaInfo | [0.2.1](https://github.com/NikolaiSachok/DC-plugins/releases/tag/media-info-wdx-v0.2.1) |
 
 To build from source, install the Xcode command-line tools (`xcode-select --install`).
 Every plugin builds and installs the same way:

@@ -7,12 +7,26 @@ independently and tagged below.
 ## [Unreleased]
 
 ### Fixed
-- **table-wlx 0.2.1:** Frozen coordinate headers now render outside the scrolling
-  document, keeping them stationary during animated scrolling. Row/column selection
-  and column resizing continue to use the grid geometry. Closes #45.
-- BookView, MarkdownView and MediaInfo installers refuse updates while Double
-  Commander is running and replace binaries atomically instead of rewriting a
-  potentially mapped file. Closes #35.
+- BookView and MarkdownView installers refuse updates while Double Commander is
+  running and replace binaries atomically. The same MediaInfo fix ships in 0.2.1.
+  Closes #35.
+
+## table-wlx 0.2.1 — 2026-11-14
+
+### Fixed
+- Frozen coordinate headers render outside the scrolling document, keeping them
+  stationary during animated scrolling. Row/column selection and column resizing
+  continue to use the grid geometry, including when scrollbar styles change.
+  Closes #45.
+
+## media-info-wdx 0.2.1 — 2026-11-14
+
+### Fixed
+- Skip online-only macOS cloud placeholders and network volumes when extracting
+  automatic metadata. Downloaded files in cloud folders retain metadata;
+  availability is checked before cache lookup and delayed work. Closes #50.
+- Refuse installer updates while Double Commander is running and replace the
+  binary atomically rather than rewriting a potentially mapped file. See #35.
 
 ## table-wlx 0.2.0 — 2026-11-14
 

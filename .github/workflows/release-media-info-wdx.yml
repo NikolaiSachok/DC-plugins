@@ -26,6 +26,7 @@ jobs:
             -framework CoreGraphics -framework ImageIO \
             -o build/test_host test/test_host.m
           ./build/test_host build/MediaInfo.wdx
+          ./test/cloud_run.sh
 
       - name: Assemble install bundle
         working-directory: media-info-wdx
@@ -47,6 +48,9 @@ jobs:
             Prebuilt universal (arm64 + x86_64) `MediaInfo.wdx` content plugin for Double Commander on macOS.
 
             Adds custom-column / tooltip fields for image & video resolution, audio & video duration, bitrate, codecs, and PDF page count. No dependencies, no network.
+
+            Automatic metadata skips online-only macOS cloud placeholders and network
+            volumes; downloaded files in cloud folders keep their metadata.
 
             **Install (no Xcode needed):** unzip, quit Double Commander, then run `./install.sh`.
             Verify the download with the included `.sha256`.
