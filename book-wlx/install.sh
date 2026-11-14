@@ -13,6 +13,11 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 DEST="$HOME/Library/Preferences/doublecmd/plugins/wlx/BookView"
 CONFIG="$HOME/Library/Preferences/doublecmd/doublecmd.xml"
 
+if pgrep -f "MacOS/doublecmd" >/dev/null; then
+    echo "!! Double Commander is running. Quit it, then re-run this script."
+    exit 1
+fi
+
 if [ -f "$HERE/BookView.wlx" ]; then
     WLX="$HERE/BookView.wlx"              # prebuilt release bundle
     ASSETS="$HERE/assets"
@@ -25,16 +30,17 @@ fi
 
 echo "==> Installing files to $DEST"
 mkdir -p "$DEST"
-cp -f "$WLX" "$DEST/BookView.wlx"
+# Never rewrite a Mach-O inode that another process may still have mapped.
+STAGED="$(mktemp "$DEST/.BookView.wlx.XXXXXX")"
+trap 'rm -f "$STAGED"' EXIT
+cp -f "$WLX" "$STAGED"
+mv -f "$STAGED" "$DEST/BookView.wlx"
 rm -rf "$DEST/assets"
 cp -R "$ASSETS" "$DEST/assets"
 # Ship a sample config without clobbering an existing one.
 [ -f "$HERE/BookView.ini.sample" ] && cp -f "$HERE/BookView.ini.sample" "$DEST/BookView.ini.sample"
 
-if pgrep -f "MacOS/doublecmd" >/dev/null; then
-    echo "!! Double Commander is running. Quit it, then re-run this script to register."
-    exit 1
-fi
+
 
 echo "==> Registering in $CONFIG"
 python3 "$HERE/register_plugin.py" "$CONFIG" "$DEST/BookView.wlx"

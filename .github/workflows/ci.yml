@@ -19,6 +19,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Verify safe installer replacement
+        run: python3 scripts/test-installers.py
+
       - name: Build markdown-wlx
         working-directory: markdown-wlx
         run: ./build.sh
