@@ -161,6 +161,7 @@ jobs:
             -framework CoreGraphics -framework ImageIO \
             -o build/test_host test/test_host.m
           ./build/test_host build/MediaInfo.wdx
+          ./test/cloud_run.sh
 
       - name: Build and verify table-wlx universal ABI
         working-directory: table-wlx

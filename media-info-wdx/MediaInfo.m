@@ -26,10 +26,12 @@
 #import <fcntl.h>
 #import <unistd.h>
 #import <fenv.h>
+#import <sys/resource.h>
+#import <sys/mount.h>
 
 #include "contplug.h"
 
-#define MI_VERSION "0.2.0"
+#define MI_VERSION "0.2.1"
 
 /* ---- Field table -------------------------------------------------------- */
 
@@ -668,10 +670,8 @@ static BOOL IsOwnParsedVideo(NSString *ext) {
 
 /* Parse with caching keyed by path + mtime. Returns a (possibly empty) MIInfo
    so repeated probes of an unreadable file don't re-parse. */
-static MIInfo *InfoForPath(NSString *path, MICategory cat) {
-    struct stat st;
-    long mtime = (stat(path.fileSystemRepresentation, &st) == 0)
-                     ? (long)st.st_mtimespec.tv_sec : 0;
+static MIInfo *InfoForPath(NSString *path, MICategory cat, const struct stat *st) {
+    long mtime = (long)st->st_mtimespec.tv_sec;
     NSString *key = [NSString stringWithFormat:@"%ld\x1f%@", mtime, path];
 
     MIInfo *cached = [gCache objectForKey:key];
@@ -754,36 +754,54 @@ DLLEXPORT int __stdcall ContentGetValue(char *fileName, int field, int unit,
         MICategory cat = CategoryForPath(path);
         if (cat == CAT_OTHER) return ft_fieldempty;
 
-        /* AVFoundation parsing is the only slow path; defer it off the UI
-           thread when DC asks us to. (Our own AVI/MKV parsers are fast.) */
-        BOOL slow = (cat == CAT_AUDIO) ||
-                    (cat == CAT_VIDEO &&
-                     !IsOwnParsedVideo(path.pathExtension.lowercaseString));
-        if (slow && (flags & CONTENT_DELAYIFSLOW)) {
-            struct stat st;
-            long mtime = (stat(path.fileSystemRepresentation, &st) == 0)
-                             ? (long)st.st_mtimespec.tv_sec : 0;
-            NSString *key = [NSString stringWithFormat:@"%ld\x1f%@", mtime, path];
-            if (![gCache objectForKey:key]) return ft_delayed;
-        }
-
-        MIInfo *info = InfoForPath(path, cat);
-        id value = info.values[@(field)];
-        if (!value) return ft_fieldempty;
-
-        switch (kFields[field].type) {
-            case ft_numeric_32:
-                if (maxlen < (int)sizeof(int32_t)) return ft_fieldempty;
-                *(int32_t *)fieldValue = (int32_t)[value intValue];
-                return ft_numeric_32;
-            case ft_numeric_floating:
-                if (maxlen < (int)sizeof(double)) return ft_fieldempty;
-                *(double *)fieldValue = [value doubleValue];
-                return ft_numeric_floating;
-            case ft_string:
-                return WriteString((NSString *)value, fieldValue, maxlen);
-            default:
+        /* Automatic metadata must not hydrate an online-only file (including
+         * an intermediate directory). Limit the policy to this ABI call/thread
+         * and restore the host state even on cache hits and early returns.
+         * TN3150: Getting ready for dataless files. */
+        int policy=getiopolicy_np(IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_THREAD);
+        if (policy<0 || setiopolicy_np(IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES,
+                IOPOL_SCOPE_THREAD, IOPOL_MATERIALIZE_DATALESS_FILES_OFF)!=0)
+            return ft_fieldempty;
+        @try {
+            struct statfs volume;
+            if (statfs(path.fileSystemRepresentation,&volume)!=0 || !(volume.f_flags & MNT_LOCAL))
                 return ft_fieldempty;
+            struct stat st;
+            if (stat(path.fileSystemRepresentation,&st)!=0 || !S_ISREG(st.st_mode) ||
+                (st.st_flags & SF_DATALESS)) return ft_fieldempty;
+            /* Check availability BEFORE consulting the cache: an evicted file
+             * can retain its mtime. Skips must not become cached parse failures. */
+            /* AVFoundation parsing is the only slow path; defer it off the UI
+               thread when DC asks us to. (Our own AVI/MKV parsers are fast.) */
+            BOOL slow = (cat == CAT_AUDIO) ||
+                        (cat == CAT_VIDEO &&
+                         !IsOwnParsedVideo(path.pathExtension.lowercaseString));
+            if (slow && (flags & CONTENT_DELAYIFSLOW)) {
+                long mtime = (long)st.st_mtimespec.tv_sec;
+                NSString *key = [NSString stringWithFormat:@"%ld\x1f%@", mtime, path];
+                if (![gCache objectForKey:key]) return ft_delayed;
+            }
+
+            MIInfo *info = InfoForPath(path, cat, &st);
+            id value = info.values[@(field)];
+            if (!value) return ft_fieldempty;
+
+            switch (kFields[field].type) {
+                case ft_numeric_32:
+                    if (maxlen < (int)sizeof(int32_t)) return ft_fieldempty;
+                    *(int32_t *)fieldValue = (int32_t)[value intValue];
+                    return ft_numeric_32;
+                case ft_numeric_floating:
+                    if (maxlen < (int)sizeof(double)) return ft_fieldempty;
+                    *(double *)fieldValue = [value doubleValue];
+                    return ft_numeric_floating;
+                case ft_string:
+                    return WriteString((NSString *)value, fieldValue, maxlen);
+                default:
+                    return ft_fieldempty;
+            }
+        } @finally {
+            setiopolicy_np(IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES, IOPOL_SCOPE_THREAD, policy);
         }
     }
 }

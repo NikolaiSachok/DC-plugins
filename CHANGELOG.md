@@ -7,6 +7,9 @@ independently and tagged below.
 ## [Unreleased]
 
 ### Fixed
+- **media-info-wdx 0.2.1:** Skip online-only cloud placeholders and network volumes
+  when extracting automatic metadata. Downloaded files in cloud folders retain
+  metadata; availability is checked before cache lookup and delayed work. Closes #50.
 - BookView, MarkdownView and MediaInfo installers refuse updates while Double
   Commander is running and replace binaries atomically instead of rewriting a
   potentially mapped file. Closes #35.

@@ -20,6 +20,25 @@ network**:
 | **Video** (mkv, webm) | Dimensions, Duration, Frame rate, Video/Audio codec, Sample rate, Channels | self-contained **EBML** reader (AVFoundation can't open Matroska on macOS) |
 | **PDF** | Page count | **CoreGraphics (CGPDF)** |
 
+## Local files and cloud storage
+
+Automatic metadata is read only from regular files on local volumes. Online-only
+macOS File Provider placeholders are left blank; MediaInfo does not request their
+download. Downloaded files in the same cloud folder keep their normal metadata.
+Network volumes are skipped too.
+
+Each metadata call temporarily disables dataless-file materialization for its
+thread, checks the filesystem and `SF_DATALESS` flag before reading or consulting
+the cache, then restores Double Commander's previous policy. A skipped file is
+not cached as an error: refresh the listing after downloading it to obtain its
+metadata. The plugin version field remains available for every file.
+
+This uses the macOS mechanisms described in [Apple TN3150](https://developer.apple.com/documentation/technotes/tn3150-getting-ready-for-data-less-files).
+Providers using a virtual filesystem that reports remote content as ordinary
+local data may not expose enough information to distinguish online-only files.
+This applies to MediaInfo columns/tooltips; DC's own thumbnails and other plugins
+can independently access file contents.
+
 ## The `Summary` field
 
 The headline field is **`Summary`** — the plugin picks the single most useful string
@@ -140,3 +159,9 @@ clang -arch arm64 -fobjc-arc -framework Foundation -framework CoreGraphics \
   -framework ImageIO -o build/test_host test/test_host.m
 ./build/test_host build/MediaInfo.wdx      # -> RESULT: PASS
 ```
+
+Cloud availability regression: after `./build.sh`, run `./test/cloud_run.sh`.
+It loads the real WDX with a test-only filesystem shim, checks cloud skips before
+cache/delayed work, eviction and download transitions with unchanged mtime,
+network-volume skips, and restoration of both enabled and disabled host policies.
+The shim models availability; it is not a live cloud-provider integration test.
