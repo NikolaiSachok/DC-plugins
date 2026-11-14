@@ -6,6 +6,11 @@ independently and tagged below.
 
 ## [Unreleased]
 
+### Fixed
+- **table-wlx 0.2.1:** Frozen coordinate headers now render outside the scrolling
+  document, keeping them stationary during animated scrolling. Row/column selection
+  and column resizing continue to use the grid geometry. Closes #45.
+
 ## table-wlx 0.2.0 — 2026-11-14
 
 ### Added

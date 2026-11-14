@@ -10,7 +10,7 @@
 #include "build/parser.h"
 #include "ODFGuard.h"
 
-#define TV_VERSION "0.2.0"
+#define TV_VERSION "0.2.1"
 #define TV_EXPORT __attribute__((visibility("default")))
 static const char *kDetect =
     "EXT=\"CSV\"|EXT=\"TSV\"|EXT=\"XLSX\"|EXT=\"XLSM\"|EXT=\"XLSB\"|EXT=\"XLS\"|"
@@ -135,6 +135,7 @@ static NSDictionary *ReadWorkbook(NSString *path, NSString **error) {
 @property(nonatomic) NSInteger resizingColumn;
 @property(nonatomic) CGFloat resizeStartX, resizeStartWidth;
 - (void)resetColumnWidths;
+- (void)drawText:(NSString *)text rect:(NSRect)rect header:(BOOL)header selected:(BOOL)selected;
 - (CGFloat)columnOrigin:(NSInteger)column;
 - (NSInteger)columnAtX:(CGFloat)x;
 @property(nonatomic) NSInteger dragMode; /* 0 cells, 1 rows, 2 columns */
@@ -154,7 +155,8 @@ static NSDictionary *ReadWorkbook(NSString *path, NSString **error) {
 @property(nonatomic, strong) NSButton *clipboardButton;
 @property(nonatomic, copy) NSArray<NSDictionary *> *sheets;
 @property(atomic) NSUInteger generation;
-@property(nonatomic) BOOL loading, headerRedrawPending;
+@property(nonatomic) BOOL loading;
+@property(nonatomic, strong) NSView *headers;
 @property(atomic) BOOL closed;
 @property(nonatomic, strong) NSMutableArray<NSDictionary *> *pendingSearches;
 - (void)openPath:(NSString *)path;
@@ -171,6 +173,64 @@ static NSDictionary *ReadWorkbook(NSString *path, NSString **error) {
 @interface TVCellContent : NSTextView @end
 @implementation TVCellContent
 - (BOOL)acceptsFirstResponder { return NO; }
+@end
+
+/* Frozen headers are a sibling of the clip view, never part of its copied
+ * document pixels. Only header strips intercept events; the body stays native. */
+@interface TVHeaders : NSView
+@property(nonatomic, weak) TVGrid *grid;
+@end
+@implementation TVHeaders
+- (BOOL)isFlipped { return YES; }
+- (NSView *)hitTest:(NSPoint)point {
+    NSPoint p=[self convertPoint:point fromView:self.superview];
+    if (NSPointInRect(p,self.bounds) && (p.y<kRow || p.x<kGutter)) return self;
+    return nil;
+}
+- (void)drawRect:(NSRect)dirty {
+    (void)dirty;
+    Masked(^{
+        TVGrid *grid=self.grid;
+        NSRect visible=grid.visibleRect;
+        [NSColor.controlBackgroundColor setFill];
+        NSRectFill(NSMakeRect(0,0,self.bounds.size.width,kRow));
+        NSRectFill(NSMakeRect(0,0,kGutter,self.bounds.size.height));
+        [NSGraphicsContext saveGraphicsState];
+        NSRectClip(NSMakeRect(kGutter,0,MAX(0,self.bounds.size.width-kGutter),kRow));
+        NSInteger c0=[grid columnAtX:visible.origin.x+kGutter];
+        NSInteger c1=MIN(grid.columns,[grid columnAtX:NSMaxX(visible)]+1);
+        for (NSInteger c=c0;c<c1;c++) {
+            NSRect rect=NSMakeRect([grid columnOrigin:c]-visible.origin.x,0,grid.columnWidths[c].doubleValue,kRow);
+            [grid drawText:ColumnName(c) rect:rect header:YES selected:NO];
+            [NSColor.gridColor set]; NSFrameRectWithWidth(rect,0.5);
+        }
+        [NSGraphicsContext restoreGraphicsState];
+        [NSGraphicsContext saveGraphicsState];
+        NSRectClip(NSMakeRect(0,kRow,kGutter,MAX(0,self.bounds.size.height-kRow)));
+        NSInteger r0=MAX(0,(NSInteger)(visible.origin.y/kRow));
+        NSInteger r1=MIN((NSInteger)grid.rows.count,(NSInteger)ceil(NSMaxY(visible)/kRow));
+        for (NSInteger r=r0;r<r1;r++) {
+            NSRect rect=NSMakeRect(0,kRow+r*kRow-visible.origin.y,kGutter,kRow);
+            [grid drawText:[NSString stringWithFormat:@"%ld",(long)r+1] rect:rect header:YES selected:NO];
+            [NSColor.gridColor set]; NSFrameRectWithWidth(rect,0.5);
+        }
+        [NSGraphicsContext restoreGraphicsState];
+    });
+}
+- (void)resetCursorRects {
+    [super resetCursorRects];
+    NSRect visible=self.grid.visibleRect;
+    for (NSInteger c=0;c<self.grid.columns;c++) {
+        NSRect rect=NSIntersectionRect(NSMakeRect(kGutter+4,0,MAX(0,self.bounds.size.width-kGutter-4),kRow),
+            NSMakeRect([self.grid columnOrigin:c+1]-visible.origin.x-4,0,8,kRow));
+        if (!NSIsEmptyRect(rect)) [self addCursorRect:rect cursor:NSCursor.resizeLeftRightCursor];
+    }
+}
+- (void)mouseDown:(NSEvent *)event { [self.grid mouseDown:event]; }
+- (void)mouseDragged:(NSEvent *)event { [self.grid mouseDragged:event]; }
+- (void)mouseUp:(NSEvent *)event { [self.grid mouseUp:event]; }
+- (void)scrollWheel:(NSEvent *)event { [self.grid.enclosingScrollView scrollWheel:event]; }
+- (NSMenu *)menuForEvent:(NSEvent *)event { return [self.grid menuForEvent:event]; }
 @end
 
 @implementation TVGrid
@@ -226,7 +286,6 @@ static NSDictionary *ReadWorkbook(NSString *path, NSString **error) {
 - (void)drawRect:(NSRect)dirty {
     Masked(^{
         [NSColor.textBackgroundColor setFill]; NSRectFill(dirty);
-        NSRect visible = self.visibleRect;
         NSInteger r0 = MAX(0, (NSInteger)((NSMinY(dirty)-kRow)/kRow));
         NSInteger r1 = MIN((NSInteger)self.rows.count, (NSInteger)ceil(NSMaxY(dirty)/kRow));
         NSInteger c0 = [self columnAtX:NSMinX(dirty)];
@@ -241,27 +300,7 @@ static NSDictionary *ReadWorkbook(NSString *path, NSString **error) {
             [NSColor.gridColor set]; NSFrameRectWithWidth(rect,0.5);
             [self drawText:self.rows[r][c] rect:rect header:NO selected:selected];
         }
-        /* Paint frozen headers LAST, at the viewport edges rather than at the
-         * document origin. Both remain visible during two-axis scrolling. */
-        [NSColor.controlBackgroundColor setFill];
-        NSRectFill(NSMakeRect(visible.origin.x,visible.origin.y,visible.size.width,kRow));
-        NSRectFill(NSMakeRect(visible.origin.x,visible.origin.y,kGutter,visible.size.height));
-        /* A partial body redraw can still repaint the frozen strips. Use
-         * viewport ranges here, so it cannot erase unrelated header labels. */
-        NSInteger hc0=[self columnAtX:NSMinX(visible)], hc1=MIN(self.columns,[self columnAtX:NSMaxX(visible)]+1);
-        NSInteger hr0=MAX(0,(NSInteger)((NSMinY(visible)-kRow)/kRow));
-        NSInteger hr1=MIN((NSInteger)self.rows.count,(NSInteger)ceil(NSMaxY(visible)/kRow));
-        for (NSInteger c=hc0;c<hc1;c++) {
-            NSRect rect=NSMakeRect([self columnOrigin:c],visible.origin.y,self.columnWidths[c].doubleValue,kRow);
-            [self drawText:ColumnName(c) rect:rect header:YES selected:NO];
-            [NSColor.gridColor set]; NSFrameRectWithWidth(rect,0.5);
-        }
-        for (NSInteger r=hr0;r<hr1;r++) {
-            NSRect rect=NSMakeRect(visible.origin.x,kRow+r*kRow,kGutter,kRow);
-            [self drawText:[NSString stringWithFormat:@"%ld",(long)r+1] rect:rect header:YES selected:NO];
-        }
-        [NSColor.controlBackgroundColor setFill];
-        NSRectFill(NSMakeRect(visible.origin.x,visible.origin.y,kGutter,kRow));
+
     });
 }
 - (void)selectRow:(NSInteger)row column:(NSInteger)col extend:(BOOL)extend {
@@ -424,7 +463,13 @@ static NSDictionary *ReadWorkbook(NSString *path, NSString **error) {
     self.grid=[[TVGrid alloc] initWithFrame:NSZeroRect]; self.grid.owner=self;
     self.grid.anchorRow=self.grid.endRow=-1; self.grid.rows=@[]; [self.grid resetColumnWidths];
     self.scroll.documentView=self.grid; [self addSubview:self.scroll];
+    TVHeaders *headers=[[TVHeaders alloc] initWithFrame:NSZeroRect];
+    headers.grid=self.grid; headers.wantsLayer=YES;
+    self.headers=headers; [self addSubview:headers];
     self.scroll.contentView.postsBoundsChangedNotifications=YES;
+    self.scroll.contentView.postsFrameChangedNotifications=YES;
+    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(scrolled:)
+        name:NSViewFrameDidChangeNotification object:self.scroll.contentView];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(scrolled:)
         name:NSViewBoundsDidChangeNotification object:self.scroll.contentView];
     return self;
@@ -469,20 +514,17 @@ static NSDictionary *ReadWorkbook(NSString *path, NSString **error) {
     self.grid.frameSize=NSMakeSize(MAX(self.scroll.contentSize.width,self.grid.columnEdges.lastObject.doubleValue),
         MAX(self.scroll.contentSize.height,kRow+self.grid.rows.count*kRow));
     self.grid.needsDisplay=YES;
+    self.headers.frame=[self convertRect:self.scroll.contentView.bounds fromView:self.scroll.contentView];
+    self.headers.needsDisplay=YES;
+    [self.window invalidateCursorRectsForView:self.headers];
 }
 - (void)scrolled:(NSNotification *)note {
     (void)note;
     [self.grid setNeedsDisplayInRect:self.grid.visibleRect];
     [self.window invalidateCursorRectsForView:self.grid];
-    /* NSClipView may copy old pixels AFTER its bounds notification. Redraw the
-     * frozen headers after that operation, even when only a thin strip was exposed. */
-    if (self.headerRedrawPending) return;
-    self.headerRedrawPending=YES;
-    __weak TVView *weak=self;
-    dispatch_async(dispatch_get_main_queue(), ^{
-        TVView *view=weak; view.headerRedrawPending=NO;
-        if (view && !view.closed) [view.grid setNeedsDisplayInRect:view.grid.visibleRect];
-    });
+    self.headers.frame=[self convertRect:self.scroll.contentView.bounds fromView:self.scroll.contentView];
+    self.headers.needsDisplay=YES;
+    [self.window invalidateCursorRectsForView:self.headers];
 }
 - (void)openPath:(NSString *)path {
     NSUInteger token=++self.generation;
